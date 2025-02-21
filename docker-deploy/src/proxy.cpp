@@ -1,8 +1,19 @@
 #include "proxy.hpp"
 #include <unistd.h>
-#include <vector>
+#include <iostream>
 
 Proxy::Proxy() : server_fd(-1) {}
+
+Proxy::~Proxy() {
+    for (auto& thread : threads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+    if (server_fd >= 0) {
+        close(server_fd);
+    }
+}
 
 void Proxy::run() {
     setup_server();
@@ -41,11 +52,17 @@ void Proxy::start_accepting() {
         int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
         
         if (client_fd < 0) {
+            std::cerr << "Failed to accept connection" << std::endl;
             continue;
         }
 
-        handle_client(client_fd);
+
+        threads.emplace_back(&Proxy::client_thread, this, client_fd);
     }
+}
+
+void Proxy::client_thread(Proxy* proxy, int client_fd) {
+    proxy->handle_client(client_fd);
 }
 
 void Proxy::handle_client(int client_fd) {
@@ -57,6 +74,8 @@ void Proxy::handle_client(int client_fd) {
         return;
     }
     
+    std::lock_guard<std::mutex> lock(mutex);
+    
     Request request;
     if (!request.parse(buffer)) {
         std::string response = "HTTP/1.1 400 Bad Request\r\n\r\n";
@@ -66,7 +85,6 @@ void Proxy::handle_client(int client_fd) {
     }
     
     // TODO: Handle different request types (GET, POST, CONNECT)
-    // For now, just send a dummy response
     std::string response = "HTTP/1.1 200 OK\r\n\r\nHello, World!";
     send(client_fd, response.c_str(), response.length(), 0);
     close(client_fd);
