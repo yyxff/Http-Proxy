@@ -104,3 +104,57 @@ void Proxy::handle_client(int client_fd) {
         close(client_fd);
     }
 }
+
+std::string Proxy::extract_host(const std::string& url) {
+    std::string host = url;
+    if (host.substr(0, 7) == "http://") {
+        host = host.substr(7);
+    }
+    size_t pos = host.find('/');
+    if (pos != std::string::npos) {
+        host = host.substr(0, pos);
+    }
+    return host;
+}
+
+std::string Proxy::build_get_request(const Request& request) {
+    std::string req;
+    std::string url = request.getUrl();
+    size_t pos = url.find('/');
+    std::string path = pos != std::string::npos ? url.substr(pos) : "/";
+    
+    req = "GET " + path + " " + request.getVersion() + "\r\n";
+    req += "Host: " + extract_host(url) + "\r\n";
+    req += "Connection: close\r\n\r\n";
+    
+    return req;
+}
+
+void Proxy::handle_get(int client_fd, const Request& request) {
+    std::string host = extract_host(request.getUrl());
+    int server_fd = connect_to_server(host, 80);
+    
+    // build and send GET request to the original server
+    std::string get_request = build_get_request(request);
+    send(server_fd, get_request.c_str(), get_request.length(), 0);
+    
+    // receive the response from the original server
+    std::vector<char> response_buffer(4096);
+    std::string full_response;
+    ssize_t bytes_received;
+    
+    while ((bytes_received = recv(server_fd, response_buffer.data(), response_buffer.size(), 0)) > 0) {
+        full_response.append(response_buffer.data(), bytes_received);
+    }
+    
+    // send the response to the client
+    if (!full_response.empty()) {
+        send(client_fd, full_response.c_str(), full_response.length(), 0);
+    } else {
+        std::string error_response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
+        send(client_fd, error_response.c_str(), error_response.length(), 0);
+    }
+    
+    close(server_fd);
+    close(client_fd);
+}
