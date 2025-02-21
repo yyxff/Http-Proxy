@@ -9,6 +9,7 @@
 #include <vector>
 #include <thread>
 #include <mutex>
+#include "logger.hpp"
 
 class Proxy {
 private:
@@ -16,6 +17,7 @@ private:
     const int PORT = 12345;
     std::vector<std::thread> threads;
     std::mutex mutex;
+    Logger* logger;
 
 public:
     Proxy();
