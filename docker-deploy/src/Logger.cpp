@@ -87,3 +87,24 @@ void Logger::debug(const string & message){
     string messageDebug = "[DEBUG]: "+message;
     log(logFileDebug, messageDebug);
 }
+
+
+// log info level message with pid
+void Logger::info(int pid, const string & message){
+    string messageInfo = to_string(pid)+": "+message;
+    info(messageInfo);
+}
+
+
+// log warning level message with pid
+void Logger::warning(int pid, const string & message){
+    string messageWarning = to_string(pid)+": "+message;
+    info(messageWarning);
+}
+
+
+// log debug level message with pid
+void Logger::debug(int pid, const string & message){
+    string messageDebug = to_string(pid)+": "+message;
+    info(messageDebug);
+}

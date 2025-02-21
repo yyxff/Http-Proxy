@@ -1,3 +1,6 @@
+#ifndef LOGGER_HPP
+#define LOGGER_HPP
+
 #include <iostream>
 #include <cstring>
 #include <sys/socket.h>
@@ -31,6 +34,14 @@ class Logger{
         // log debug level message
         void debug(const string & message);
 
+        // log info level message with pid
+        void info(int pid, const string & message);
+
+        // log warning level message with pid
+        void warning(int pid, const string & message);
+
+        // log debug level message with pid
+        void debug(int pid, const string & message);
     private: 
         ofstream logFileInfo;
         ofstream logFileWarning;
@@ -44,7 +55,9 @@ class Logger{
 
         // print log to log file
         void log(ofstream & logFile, const string & message);
-        
+
         // get current time
         string getCurrentTime();
 };
+
+#endif
