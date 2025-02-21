@@ -16,9 +16,9 @@
 #include <ctime>
 #include <iomanip>
 #include <filesystem>
+#include <mutex>
 using namespace std;
 
-// todo mutex for logger
 class Logger{
 
     public:
@@ -46,6 +46,7 @@ class Logger{
         ofstream logFileInfo;
         ofstream logFileWarning;
         ofstream logFileDebug;
+        mutex mtx;
 
         // constructor
         Logger(const string & filePath);

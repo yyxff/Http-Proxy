@@ -4,6 +4,7 @@
 // singleton get instance
 Logger & Logger::getInstance(){
     static Logger instance("./../logs");
+    static mutex mtx;
     return instance;
 }
 
@@ -48,6 +49,7 @@ Logger::~Logger(){}
 
 // print log to log file
 void Logger::log(ofstream & logFile, const string & message){
+    lock_guard<mutex> lock(mtx);
     string timeStr = getCurrentTime();
     if (logFile.is_open()){
         logFile<<timeStr<<" "<<message<<endl;
