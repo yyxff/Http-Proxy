@@ -9,7 +9,7 @@ add_executable(proxy
     proxy.cpp
     cache.cpp
     request.cpp
-    logger.cpp
+    Logger.cpp
 )
 
 target_link_libraries(proxy pthread)
