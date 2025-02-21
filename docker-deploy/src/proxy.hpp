@@ -5,6 +5,8 @@
 #include <netinet/in.h>
 #include <string>
 #include <stdexcept>
+#include "request.hpp"
+#include <vector>
 
 class Proxy {
 private:

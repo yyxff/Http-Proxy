@@ -1,5 +1,6 @@
 #include "proxy.hpp"
 #include <unistd.h>
+#include <vector>
 
 Proxy::Proxy() : server_fd(-1) {}
 
@@ -43,8 +44,30 @@ void Proxy::start_accepting() {
             continue;
         }
 
-        // TODO: Handle client connection in a new thread
-        // For now, just close the connection
-        close(client_fd);
+        handle_client(client_fd);
     }
+}
+
+void Proxy::handle_client(int client_fd) {
+    std::vector<char> buffer(4096);
+    ssize_t bytes_received = recv(client_fd, buffer.data(), buffer.size(), 0);
+    
+    if (bytes_received <= 0) {
+        close(client_fd);
+        return;
+    }
+    
+    Request request;
+    if (!request.parse(buffer)) {
+        std::string response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+        send(client_fd, response.c_str(), response.length(), 0);
+        close(client_fd);
+        return;
+    }
+    
+    // TODO: Handle different request types (GET, POST, CONNECT)
+    // For now, just send a dummy response
+    std::string response = "HTTP/1.1 200 OK\r\n\r\nHello, World!";
+    send(client_fd, response.c_str(), response.length(), 0);
+    close(client_fd);
 }
