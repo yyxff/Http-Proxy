@@ -3,7 +3,7 @@
 #include <iostream>
 
 int main() {
-    Logger logger("./../logs");
+    Logger & logger = Logger::getInstance();
     try {
         Proxy proxy;
         logger.info("starting proxy...");

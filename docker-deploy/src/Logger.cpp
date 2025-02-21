@@ -1,5 +1,14 @@
 #include "Logger.hpp"
 
+
+// singleton get instance
+Logger & Logger::getInstance(){
+    static Logger instance("./../logs");
+    return instance;
+}
+
+
+// constructor
 Logger::Logger(const string & filePath){
         // create directory if doesn't exist
         if (!filesystem::exists(filePath)){
@@ -32,8 +41,12 @@ Logger::Logger(const string & filePath){
         } 
     }
 
+
+// destructor
 Logger::~Logger(){}
 
+
+// print log to log file
 void Logger::log(ofstream & logFile, const string & message){
     string timeStr = getCurrentTime();
     if (logFile.is_open()){
@@ -41,6 +54,8 @@ void Logger::log(ofstream & logFile, const string & message){
     }
 }
 
+
+// get current time
 string Logger::getCurrentTime() {
     auto now = time(nullptr);
     auto tm = *localtime(&now);
@@ -49,12 +64,16 @@ string Logger::getCurrentTime() {
     return oss.str();
 }
 
+
+// log info level message
 void Logger::info(const string & message){
     string messageInfo = "[INFO]: "+message;
     log(logFileInfo, messageInfo);
     log(logFileDebug, messageInfo);
 }
 
+
+// log warning level message
 void Logger::warning(const string & message){
     string messageWarning = "[WARNING]: "+message;
     log(logFileWarning, messageWarning);
@@ -62,6 +81,8 @@ void Logger::warning(const string & message){
     log(logFileDebug, messageWarning);
 }
 
+
+// log debug level message
 void Logger::debug(const string & message){
     string messageDebug = "[DEBUG]: "+message;
     log(logFileDebug, messageDebug);

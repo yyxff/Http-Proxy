@@ -2,7 +2,7 @@
 #include <unistd.h>
 #include <iostream>
 
-Proxy::Proxy() : server_fd(-1) {}
+Proxy::Proxy() : server_fd(-1),logger(Logger::getInstance()) {}
 
 Proxy::~Proxy() {
     for (auto& thread : threads) {

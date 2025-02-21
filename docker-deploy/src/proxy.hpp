@@ -17,7 +17,7 @@ private:
     const int PORT = 12345;
     std::vector<std::thread> threads;
     std::mutex mutex;
-    Logger logger;
+    Logger & logger;
 
 public:
     Proxy();
