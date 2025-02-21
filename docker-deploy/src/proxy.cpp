@@ -74,8 +74,6 @@ void Proxy::handle_client(int client_fd) {
         return;
     }
     
-    std::lock_guard<std::mutex> lock(mutex);
-    
     Request request;
     if (!request.parse(buffer)) {
         std::string response = "HTTP/1.1 400 Bad Request\r\n\r\n";
@@ -84,8 +82,25 @@ void Proxy::handle_client(int client_fd) {
         return;
     }
     
-    // TODO: Handle different request types (GET, POST, CONNECT)
-    std::string response = "HTTP/1.1 200 OK\r\n\r\nHello, World!";
-    send(client_fd, response.c_str(), response.length(), 0);
-    close(client_fd);
+    try {
+        if (request.isConnect()) {
+            handle_connect(client_fd, request);
+        }
+        else if (request.isGet()) {
+            handle_get(client_fd, request);
+        }
+        else if (request.isPost()) {
+            handle_post(client_fd, request);
+        }
+        else {
+            std::string response = "HTTP/1.1 405 Method Not Allowed\r\n\r\n";
+            send(client_fd, response.c_str(), response.length(), 0);
+            close(client_fd);
+        }
+    }
+    catch (const std::exception& e) {
+        std::string response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
+        send(client_fd, response.c_str(), response.length(), 0);
+        close(client_fd);
+    }
 }
