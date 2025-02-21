@@ -30,8 +30,10 @@ private:
     void handle_client(int client_fd);
     static void client_thread(Proxy* proxy, int client_fd);
     void handle_get(int client_fd, const Request& request);
+    void handle_post(int client_fd, const Request& request);
     std::string extract_host(const std::string& url);
     std::string build_get_request(const Request& request);
+    std::string build_post_request(const Request& request);
 };
 
 #endif
