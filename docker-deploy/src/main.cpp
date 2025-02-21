@@ -3,10 +3,10 @@
 #include <iostream>
 
 int main() {
-    Logger logger("./../logs");
+    Logger & logger = Logger::getInstance();
     try {
         Proxy proxy;
-        logger.info("starting proxy...");
+        logger.info(1,"starting proxy...");
         proxy.run();
     }
     catch (const std::exception & e) {
