@@ -34,6 +34,8 @@ private:
     std::string extract_host(const std::string& url);
     std::string build_get_request(const Request& request);
     std::string build_post_request(const Request& request);
+    void handle_connect(int client_fd, const Request& request);
+    int connect_to_server(const std::string& host, int port);
 };
 
 #endif

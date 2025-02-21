@@ -1,6 +1,9 @@
 #include "proxy.hpp"
 #include <unistd.h>
 #include <iostream>
+#include <netdb.h>
+#include <cstring>
+#include <sys/select.h>
 
 Proxy::Proxy() : server_fd(-1) {}
 
@@ -61,7 +64,7 @@ void Proxy::start_accepting() {
         // Create a new thread for each client connection
         threads.emplace_back(&Proxy::client_thread, this, client_fd);
     }
-}
+} 
 
 void Proxy::client_thread(Proxy* proxy, int client_fd) {
     proxy->handle_client(client_fd);
@@ -214,6 +217,80 @@ void Proxy::handle_post(int client_fd, const Request& request) {
         send(client_fd, error_response.c_str(), error_response.length(), 0);
     }
     
+    close(server_fd);
+    close(client_fd);
+}
+
+int Proxy::connect_to_server(const std::string& host, int port) {
+    struct hostent *server = gethostbyname(host.c_str());
+    if (server == NULL) {
+        throw std::runtime_error("Failed to resolve hostname");
+    }
+
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        throw std::runtime_error("Failed to create socket");
+    }
+
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    memcpy(&server_addr.sin_addr.s_addr, server->h_addr, server->h_length);
+
+    if (connect(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        close(server_fd);
+        throw std::runtime_error("Failed to connect to server");
+    }
+
+    return server_fd;
+}
+
+void Proxy::handle_connect(int client_fd, const Request& request) {
+    // Extract host and port from CONNECT request
+    std::string url = request.getUrl();
+    size_t colon_pos = url.find(':');
+    if (colon_pos == std::string::npos) {
+        throw std::runtime_error("Invalid CONNECT request");
+    }
+
+    std::string host = url.substr(0, colon_pos);
+    int port = std::stoi(url.substr(colon_pos + 1));
+
+    // Connect to the destination server
+    int server_fd = connect_to_server(host, port);
+
+    // Send 200 OK to client
+    std::string response = "HTTP/1.1 200 Connection established\r\n\r\n";
+    send(client_fd, response.c_str(), response.length(), 0);
+
+    // Set up select() for both sockets
+    fd_set read_fds;
+    int max_fd = std::max(client_fd, server_fd) + 1;
+    char buffer[4096];
+
+    while (true) {
+        FD_ZERO(&read_fds);
+        FD_SET(client_fd, &read_fds);
+        FD_SET(server_fd, &read_fds);
+
+        if (select(max_fd, &read_fds, NULL, NULL, NULL) < 0) {
+            break;
+        }
+
+        if (FD_ISSET(client_fd, &read_fds)) {
+            ssize_t bytes_read = recv(client_fd, buffer, sizeof(buffer), 0);
+            if (bytes_read <= 0) break;
+            send(server_fd, buffer, bytes_read, 0);
+        }
+
+        if (FD_ISSET(server_fd, &read_fds)) {
+            ssize_t bytes_read = recv(server_fd, buffer, sizeof(buffer), 0);
+            if (bytes_read <= 0) break;
+            send(client_fd, buffer, bytes_read, 0);
+        }
+    }
+
     close(server_fd);
     close(client_fd);
 }
