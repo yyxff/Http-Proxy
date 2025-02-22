@@ -9,7 +9,7 @@
 #include <vector>
 #include <thread>
 #include <mutex>
-#include "Logger.hpp"
+#include "logger.hpp"
 
 class Proxy {
 private:
