@@ -74,6 +74,11 @@ void Proxy::client_thread(Proxy* proxy, int client_fd) {
 
 // Main request handler - parses request and routes to appropriate handler
 void Proxy::handle_client(int client_fd) {
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    getpeername(client_fd, (struct sockaddr *)&addr, &addr_len);
+    std::string client_ip = inet_ntoa(addr.sin_addr);
+    
     std::vector<char> buffer(8192);
     ssize_t bytes_received = recv(client_fd, buffer.data(), buffer.size(), 0);
     
@@ -86,9 +91,15 @@ void Proxy::handle_client(int client_fd) {
     if (!request.parse(buffer)) {
         std::string response = "HTTP/1.1 400 Bad Request\r\n\r\n";
         send(client_fd, response.c_str(), response.length(), 0);
+        logger.log(request.getId(), "Responding \"HTTP/1.1 400 Bad Request\"");
         close(client_fd);
         return;
     }
+    
+    // Log the request with client IP and time
+    logger.log(request.getId(), "\"" + request.getMethod() + " " + request.getUrl() + 
+               " " + request.getVersion() + "\" from " + client_ip + " @ " + 
+               logger.getCurrentTime());
     
     try {
         // Route request to appropriate handler based on HTTP method
@@ -143,7 +154,11 @@ std::string Proxy::build_get_request(const Request& request) {
 // TODO: GET need to cache
 void Proxy::handle_get(int client_fd, const Request& request) {
     std::string host = extract_host(request.getUrl());
-    // int server_fd = connect_to_server(host, 80);
+    int server_fd = connect_to_server(host, 80);
+    
+    // Log the GET request
+    logger.log(request.getId(), "Requesting \"GET " + request.getUrl() + " " + 
+               request.getVersion() + "\" from " + host);
     
     // build and send GET request to the original server
     std::string get_request = build_get_request(request);
@@ -164,11 +179,16 @@ void Proxy::handle_get(int client_fd, const Request& request) {
         full_response.append(response_buffer.data(), bytes_received);
     }
     
-    // send the response to the client
+    // Log the response received
     if (!full_response.empty()) {
+        size_t pos = full_response.find("\r\n");
+        std::string response_line = full_response.substr(0, pos);
+        logger.log(request.getId(), "Received \"" + response_line + "\" from " + host);
+        logger.log(request.getId(), "Responding \"" + response_line + "\"");
         send(client_fd, full_response.c_str(), full_response.length(), 0);
     } else {
         std::string error_response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
+        logger.log(request.getId(), "Responding \"HTTP/1.1 502 Bad Gateway\"");
         send(client_fd, error_response.c_str(), error_response.length(), 0);
     }
     
@@ -228,9 +248,14 @@ void Proxy::handle_post(int client_fd, const Request& request) {
     
     // Send the response to the client
     if (!full_response.empty()) {
+        size_t pos = full_response.find("\r\n");
+        std::string response_line = full_response.substr(0, pos);
+        logger.log(request.getId(), "Received \"" + response_line + "\" from " + host);
+        logger.log(request.getId(), "Responding \"" + response_line + "\"");
         send(client_fd, full_response.c_str(), full_response.length(), 0);
     } else {
         std::string error_response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
+        logger.log(request.getId(), "Responding \"HTTP/1.1 502 Bad Gateway\"");
         send(client_fd, error_response.c_str(), error_response.length(), 0);
     }
     
@@ -298,7 +323,7 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
         FD_SET(server_fd, &read_fds);
 
         if (select(max_fd, &read_fds, NULL, NULL, NULL) < 0) {
-            logger.log(request.getId(), "ERROR Select failed in tunnel");
+            logger.log(request.getId(), "ERROR Select failed in tunnel: " + std::string(strerror(errno)));
             break;
         }
 
