@@ -5,11 +5,11 @@
 #include <netinet/in.h>
 #include <string>
 #include <stdexcept>
-#include "request.hpp"
+#include "Request.hpp"
 #include <vector>
 #include <thread>
 #include <mutex>
-#include "logger.hpp"
+#include "Logger.hpp"
 #include <condition_variable>
 
 class Proxy {

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "../src/proxy.hpp"
+#include "../src/Proxy.hpp"
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -8,7 +8,7 @@
 #include <chrono>
 #include <atomic>
 #include <vector>
-#include "../src/logger.hpp"
+#include "../src/Logger.hpp"
 #include <iostream>
 #include <cstring>
 #include <filesystem>

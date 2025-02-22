@@ -6,18 +6,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # proxy library for tests
 add_library(proxy_lib
-    proxy.cpp
-    request.cpp
-    logger.cpp
+    Proxy.cpp
+    Request.cpp
+    Logger.cpp
 )
 
 # Add main executable
 add_executable(proxy 
     main.cpp
-    proxy.cpp
-    cache.cpp
-    request.cpp
-    logger.cpp
+    Proxy.cpp
+    Cache.cpp
+    Request.cpp
+    Logger.cpp
 )
 
 target_link_libraries(proxy pthread)

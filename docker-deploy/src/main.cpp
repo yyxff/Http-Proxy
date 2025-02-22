@@ -1,9 +1,9 @@
-#include "proxy.hpp"
+#include "Proxy.hpp"
 
 int main() {
     try {
         Logger& logger = Logger::getInstance();
-        logger.setLogPath("/var/log/erss/proxy.log");
+        logger.setLogPath("/var/log/erss/");
         logger.info("starting proxy...");
         
         Proxy proxy(12345);
