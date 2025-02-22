@@ -1,17 +1,17 @@
 #include "proxy.hpp"
-#include "logger.hpp"
-#include <iostream>
 
 int main() {
-    Logger & logger = Logger::getInstance();
     try {
-        Proxy proxy;
-        logger.info(1,"starting proxy...");
+        Logger& logger = Logger::getInstance();
+        logger.setLogPath("proxy.log");
+        logger.info("starting proxy...");
+        
+        Proxy proxy(12345);
         proxy.run();
-    }
-    catch (const std::exception & e) {
+        
+        return EXIT_SUCCESS;
+    } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return EXIT_FAILURE;
     }
-    return EXIT_SUCCESS;
 }

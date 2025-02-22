@@ -1,4 +1,7 @@
 #include "logger.hpp"
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 #include <filesystem>
 
 // singleton get instance
@@ -7,102 +10,65 @@ Logger & Logger::getInstance() {
     return instance;
 }
 
-void Logger::setLogPath(const string & path) {
-    lock_guard<mutex> lock(mtx);
-    if (logFileInfo.is_open()) {
-        logFileInfo.close();
+void Logger::setLogPath(const std::string & path) {
+    std::lock_guard<std::mutex> lock(mtx);
+    if (isInitialized) {
+        if (logFileInfo.is_open()) logFileInfo.close();
+        if (logFileWarning.is_open()) logFileWarning.close();
+        if (logFileDebug.is_open()) logFileDebug.close();
     }
-    
-    // Create directories if they don't exist
-    filesystem::path logPath(path);
-    filesystem::create_directories(logPath.parent_path());
-    
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path());
     logFileInfo.open(path, std::ios::app);
-    if (!logFileInfo.is_open()) {
-        throw std::runtime_error("Cannot open log file: " + path);
-    }
     isInitialized = true;
 }
 
 // destructor
 Logger::~Logger() {
-    if (logFileInfo.is_open()) {
-        logFileInfo.close();
+    if (logFileInfo.is_open()) logFileInfo.close();
+    if (logFileWarning.is_open()) logFileWarning.close();
+    if (logFileDebug.is_open()) logFileDebug.close();
+}
+
+void Logger::log(const std::string & level, const std::string & message) {
+    std::lock_guard<std::mutex> lock(mtx);
+    std::string timestamp = getCurrentTime();
+    std::cout << "[" << level << "] " << timestamp << " " << message << std::endl;
+    if (isInitialized) {
+        logFileInfo << "[" << level << "] " << timestamp << " " << message << std::endl;
+        logFileInfo.flush();
     }
 }
 
-// print log to log file
-void Logger::log(int id, const string & message) {
-    lock_guard<mutex> lock(mtx);
-    if (!isInitialized) {
-        throw std::runtime_error("Logger not initialized. Call setLogPath first.");
-    }
-    logFileInfo << id << ": " << message << endl;
-    logFileInfo.flush();
+void Logger::info(const std::string & message) {
+    log("INFO", message);
 }
 
-// get current time
-string Logger::getCurrentTime() {
-    time_t now = time(0);
-    return string(asctime(gmtime(&now)));
+void Logger::warning(const std::string & message) {
+    log("WARNING", message);
 }
 
-// log info level message
-void Logger::info(const string & message) {
-    lock_guard<mutex> lock(mtx);
-    if (!isInitialized) {
-        throw std::runtime_error("Logger not initialized. Call setLogPath first.");
-    }
-    logFileInfo << "(no-id): NOTE " << message << endl;
-    logFileInfo.flush();
+void Logger::debug(const std::string & message) {
+    log("DEBUG", message);
 }
 
-// log warning level message
-void Logger::warning(const string & message) {
-    lock_guard<mutex> lock(mtx);
-    if (!isInitialized) {
-        throw std::runtime_error("Logger not initialized. Call setLogPath first.");
-    }
-    logFileInfo << "(no-id): WARNING " << message << endl;
-    logFileInfo.flush();
+void Logger::error(const std::string & message) {
+    log("ERROR", message);
 }
 
-// log debug level message
-void Logger::debug(const string & message) {
-    lock_guard<mutex> lock(mtx);
-    if (!isInitialized) {
-        throw std::runtime_error("Logger not initialized. Call setLogPath first.");
+void Logger::log(int id, const std::string & message) {
+    std::lock_guard<std::mutex> lock(mtx);
+    std::string timestamp = getCurrentTime();
+    std::cout << "[" << id << "] " << timestamp << " " << message << std::endl;
+    if (isInitialized) {
+        logFileInfo << "[" << id << "] " << timestamp << " " << message << std::endl;
+        logFileInfo.flush();
     }
-    logFileInfo << "(no-id): NOTE " << message << endl;
-    logFileInfo.flush();
 }
 
-// log info level message with pid
-void Logger::info(int pid, const string & message) {
-    lock_guard<mutex> lock(mtx);
-    if (!isInitialized) {
-        throw std::runtime_error("Logger not initialized. Call setLogPath first.");
-    }
-    logFileInfo << pid << ": NOTE " << message << endl;
-    logFileInfo.flush();
-}
-
-// log warning level message with pid
-void Logger::warning(int pid, const string & message) {
-    lock_guard<mutex> lock(mtx);
-    if (!isInitialized) {
-        throw std::runtime_error("Logger not initialized. Call setLogPath first.");
-    }
-    logFileInfo << pid << ": WARNING " << message << endl;
-    logFileInfo.flush();
-}
-
-// log debug level message with pid
-void Logger::debug(int pid, const string & message) {
-    lock_guard<mutex> lock(mtx);
-    if (!isInitialized) {
-        throw std::runtime_error("Logger not initialized. Call setLogPath first.");
-    }
-    logFileInfo << pid << ": NOTE " << message << endl;
-    logFileInfo.flush();
+std::string Logger::getCurrentTime() {
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S");
+    return ss.str();
 }

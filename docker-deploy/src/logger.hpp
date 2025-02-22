@@ -2,72 +2,49 @@
 #define LOGGER_HPP
 
 #include <iostream>
-#include <cstring>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <initializer_list>
-#include <algorithm>
+#include <string>
 #include <fstream>
-#include <ctime>
-#include <iomanip>
-#include <filesystem>
 #include <mutex>
-using namespace std;
 
-class Logger{
+class Logger {
+public:
+    static Logger & getInstance();
 
-    public:
-        // todo rule of three
-        static Logger & getInstance();
+    // Generic log method for any level
+    void log(const std::string & level, const std::string & message);
 
-        // log info level message
-        void info(const string & message);
+    // log info level message
+    void info(const std::string & message);
 
-        // log warning level message
-        void warning(const string & message);
+    // log warning level message
+    void warning(const std::string & message);
 
-        // log debug level message
-        void debug(const string & message);
+    // log debug level message
+    void debug(const std::string & message);
 
-        // log info level message with pid
-        void info(int pid, const string & message);
+    // log error level message
+    void error(const std::string & message);
 
-        // log warning level message with pid
-        void warning(int pid, const string & message);
+    // log info level message with id
+    void log(int id, const std::string & message);
 
-        // log debug level message with pid
-        void debug(int pid, const string & message);
+    // get current time
+    std::string getCurrentTime();
 
-        // log to log file
-        void log(int id, const string & message);
+    void setLogPath(const std::string & path);
 
-        // get current time
-        string getCurrentTime();
+    ~Logger();
 
-        // destructor
-        ~Logger();
+private:
+    std::ofstream logFileInfo;
+    std::ofstream logFileWarning;
+    std::ofstream logFileDebug;
+    std::mutex mtx;
+    bool isInitialized;
 
-        void setLogPath(const string & path);
-    private: 
-        ofstream logFileInfo;
-        ofstream logFileWarning;
-        ofstream logFileDebug;
-        mutex mtx;
-        bool isInitialized;
-
-        // Default constructor with no path
-        Logger() : isInitialized(false) {}
-        
-        // Delete copy constructor and assignment operator
-        Logger(const Logger&) = delete;
-        Logger& operator=(const Logger&) = delete;
-
-        // print log to log file
-        void log(ofstream & logFile, const string & message);
+    Logger() : isInitialized(false) {}
+    Logger(const Logger&) = delete;
+    Logger& operator=(const Logger&) = delete;
 };
 
 #endif
