@@ -9,7 +9,6 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <fcntl.h>
 #include <initializer_list>
 #include <algorithm>
 #include <fstream>
@@ -42,6 +41,15 @@ class Logger{
 
         // log debug level message with pid
         void debug(int pid, const string & message);
+
+        // log to log file
+        void log(int id, const string & message);
+
+        // get current time
+        string getCurrentTime();
+
+        // destructor
+        ~Logger();
     private: 
         ofstream logFileInfo;
         ofstream logFileWarning;
@@ -51,14 +59,8 @@ class Logger{
         // constructor
         Logger(const string & filePath);
 
-        // destructor
-        ~Logger();
-
         // print log to log file
         void log(ofstream & logFile, const string & message);
-
-        // get current time
-        string getCurrentTime();
 };
 
 #endif
