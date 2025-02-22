@@ -3,7 +3,7 @@
 
 // singleton get instance
 Logger & Logger::getInstance(){
-    static Logger instance("./../logs");
+    static Logger instance("/var/log/erss");
     static mutex mtx;
     return instance;
 }

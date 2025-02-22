@@ -9,3 +9,5 @@ services:
       - "12345:12345"
     volumes:
       - ./logs:/var/log/erss
+    environment:
+      - TZ=America/New_York
