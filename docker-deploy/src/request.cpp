@@ -2,6 +2,8 @@
 #include <sstream>
 #include <iostream>
 
+std::atomic<int> Request::next_id(0);
+
 bool Request::parse(const std::vector<char>& data) {
     std::string raw_data(data.begin(), data.end());
     std::istringstream stream(raw_data);

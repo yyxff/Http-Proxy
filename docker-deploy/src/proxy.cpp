@@ -93,7 +93,7 @@ void Proxy::handle_client(int client_fd) {
     try {
         // Route request to appropriate handler based on HTTP method
         if (request.isConnect()) {
-            // handle_connect(client_fd, request);  // tunneling
+            handle_connect(client_fd, request);  // tunneling
         }
         else if (request.isGet()) {
             handle_get(client_fd, request);      // GET
@@ -185,16 +185,16 @@ std::string Proxy::build_post_request(const Request& request) {
     req = "POST " + path + " " + request.getVersion() + "\r\n";
     req += "Host: " + extract_host(url) + "\r\n";
     
-    // Copy all original headers
-    // for (const auto& header : request.getHeaders()) {
-    //     req += header.first + ": " + header.second + "\r\n";
-    // }
+    // copy all original headers
+    for (const auto& header : request.getHeaders()) {
+        req += header.first + ": " + header.second + "\r\n";
+    }
     req += "\r\n";
     
-    // Add body if exists
-    // if (request.hasBody()) {
-    //     req += request.getBody();
-    // }
+    // add request body if exists
+    if (request.hasBody()) {
+        req += request.getBody();
+    }
     
     return req;
 }
@@ -202,7 +202,10 @@ std::string Proxy::build_post_request(const Request& request) {
 // POST: no need to cache
 void Proxy::handle_post(int client_fd, const Request& request) {
     std::string host = extract_host(request.getUrl());
-    // int server_fd = connect_to_server(host, 80);
+    int server_fd = connect_to_server(host, 80);
+    
+    // add log
+    logger.log(request.getId(), "Requesting \"POST " + request.getUrl() + "\" from " + host);
     
     // Build and send POST request to the original server
     std::string post_request = build_post_request(request);
@@ -271,17 +274,23 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
     std::string host = url.substr(0, colon_pos);
     int port = std::stoi(url.substr(colon_pos + 1));
 
+    // Log the CONNECT request
+    logger.log(request.getId(), "Requesting \"CONNECT " + url + " " + request.getVersion() + "\" from " + host);
+
     // Connect to the destination server
     int server_fd = connect_to_server(host, port);
 
     // Send 200 OK to client
     std::string response = "HTTP/1.1 200 Connection established\r\n\r\n";
     send(client_fd, response.c_str(), response.length(), 0);
+    
+    // Log the response
+    logger.log(request.getId(), "Responding \"HTTP/1.1 200 Connection established\"");
 
     // Set up select() for both sockets
     fd_set read_fds;
     int max_fd = std::max(client_fd, server_fd) + 1;
-    char buffer[4096];
+    char buffer[8192];
 
     while (true) {
         FD_ZERO(&read_fds);
@@ -289,21 +298,25 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
         FD_SET(server_fd, &read_fds);
 
         if (select(max_fd, &read_fds, NULL, NULL, NULL) < 0) {
+            logger.log(request.getId(), "ERROR Select failed in tunnel");
             break;
         }
 
         if (FD_ISSET(client_fd, &read_fds)) {
             ssize_t bytes_read = recv(client_fd, buffer, sizeof(buffer), 0);
             if (bytes_read <= 0) break;
-            send(server_fd, buffer, bytes_read, 0);
+            if (send(server_fd, buffer, bytes_read, 0) <= 0) break;
         }
 
         if (FD_ISSET(server_fd, &read_fds)) {
             ssize_t bytes_read = recv(server_fd, buffer, sizeof(buffer), 0);
             if (bytes_read <= 0) break;
-            send(client_fd, buffer, bytes_read, 0);
+            if (send(client_fd, buffer, bytes_read, 0) <= 0) break;
         }
     }
+
+    // Log tunnel closure
+    logger.log(request.getId(), "Tunnel closed");
 
     close(server_fd);
     close(client_fd);
