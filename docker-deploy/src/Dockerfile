@@ -14,7 +14,8 @@ RUN mkdir build && \
     cmake .. && \
     make
 
-RUN mkdir -p /var/log/erss
+RUN mkdir -p /var/log/erss && \
+    chmod 777 /var/log/erss
 
 EXPOSE 12345
 

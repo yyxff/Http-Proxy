@@ -3,7 +3,7 @@
 int main() {
     try {
         Logger& logger = Logger::getInstance();
-        logger.setLogPath("proxy.log");
+        logger.setLogPath("/var/log/erss/proxy.log");
         logger.info("starting proxy...");
         
         Proxy proxy(12345);

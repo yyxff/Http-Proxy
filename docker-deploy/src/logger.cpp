@@ -17,9 +17,26 @@ void Logger::setLogPath(const std::string & path) {
         if (logFileWarning.is_open()) logFileWarning.close();
         if (logFileDebug.is_open()) logFileDebug.close();
     }
-    std::filesystem::create_directories(std::filesystem::path(path).parent_path());
-    logFileInfo.open(path, std::ios::app);
-    isInitialized = true;
+    
+    try {
+        // Create parent directory if it doesn't exist
+        std::filesystem::path log_path(path);
+        if (!log_path.parent_path().empty()) {
+            std::filesystem::create_directories(log_path.parent_path());
+        }
+        
+        // Open the log file
+        logFileInfo.open(path, std::ios::app);
+        if (!logFileInfo.is_open()) {
+            throw std::runtime_error("Failed to open log file: " + path);
+        }
+        isInitialized = true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Logger initialization error: " << e.what() << std::endl;
+        // Continue without file logging, but with console output
+        isInitialized = false;
+    }
 }
 
 // destructor
