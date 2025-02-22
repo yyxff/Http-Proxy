@@ -1,3 +1,6 @@
+docker-deploy/logs/
+docker-deploy/build/
+*.logs
 # Build directories
 build/
 bin/

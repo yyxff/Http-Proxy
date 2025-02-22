@@ -5,7 +5,7 @@
 #include <cstring>
 #include <sys/select.h>
 
-Proxy::Proxy() : server_fd(-1) {}
+Proxy::Proxy() : server_fd(-1),logger(Logger::getInstance()) {}
 
 Proxy::~Proxy() {
     for (auto& thread : threads) {
@@ -25,6 +25,7 @@ void Proxy::run() {
 
 // Setup server socket with proper configurations
 void Proxy::setup_server() {
+    logger.info("setting up server...");
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
         throw std::runtime_error("Failed to create socket");
@@ -47,6 +48,7 @@ void Proxy::setup_server() {
     if (listen(server_fd, 10) < 0) {
         throw std::runtime_error("Failed to listen");
     }
+    logger.info("successfully set up server!");
 }
 
 // Accept incoming client connections and create threads to handle them
@@ -91,7 +93,7 @@ void Proxy::handle_client(int client_fd) {
     try {
         // Route request to appropriate handler based on HTTP method
         if (request.isConnect()) {
-            handle_connect(client_fd, request);  // tunneling
+            // handle_connect(client_fd, request);  // tunneling
         }
         else if (request.isGet()) {
             handle_get(client_fd, request);      // GET
@@ -141,7 +143,7 @@ std::string Proxy::build_get_request(const Request& request) {
 // TODO: GET need to cache
 void Proxy::handle_get(int client_fd, const Request& request) {
     std::string host = extract_host(request.getUrl());
-    int server_fd = connect_to_server(host, 80);
+    // int server_fd = connect_to_server(host, 80);
     
     // build and send GET request to the original server
     std::string get_request = build_get_request(request);
@@ -178,15 +180,15 @@ std::string Proxy::build_post_request(const Request& request) {
     req += "Host: " + extract_host(url) + "\r\n";
     
     // Copy all original headers
-    for (const auto& header : request.getHeaders()) {
-        req += header.first + ": " + header.second + "\r\n";
-    }
+    // for (const auto& header : request.getHeaders()) {
+    //     req += header.first + ": " + header.second + "\r\n";
+    // }
     req += "\r\n";
     
     // Add body if exists
-    if (request.hasBody()) {
-        req += request.getBody();
-    }
+    // if (request.hasBody()) {
+    //     req += request.getBody();
+    // }
     
     return req;
 }
@@ -194,7 +196,7 @@ std::string Proxy::build_post_request(const Request& request) {
 // POST: no need to cache
 void Proxy::handle_post(int client_fd, const Request& request) {
     std::string host = extract_host(request.getUrl());
-    int server_fd = connect_to_server(host, 80);
+    // int server_fd = connect_to_server(host, 80);
     
     // Build and send POST request to the original server
     std::string post_request = build_post_request(request);
