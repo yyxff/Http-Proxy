@@ -14,15 +14,19 @@
 class Proxy {
 private:
     int server_fd;
-    const int PORT = 12345;
+    int port;
     std::vector<std::thread> threads;
     std::mutex mutex;
     Logger & logger;
+    bool running;
 
 public:
-    Proxy();
+    // Proxy(int port = 12345);
+    Proxy(int port = 0);
     ~Proxy();
     void run();
+    void stop();
+    int getPort() const { return port; }
 
 private:
     void setup_server();
@@ -36,6 +40,7 @@ private:
     std::string build_post_request(const Request& request);
     void handle_connect(int client_fd, const Request& request);
     int connect_to_server(const std::string& host, int port);
+    std::pair<std::string, int> parse_host_and_port(const std::string& host_str);
 };
 
 #endif

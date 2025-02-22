@@ -50,14 +50,21 @@ class Logger{
 
         // destructor
         ~Logger();
+
+        void setLogPath(const string & path);
     private: 
         ofstream logFileInfo;
         ofstream logFileWarning;
         ofstream logFileDebug;
         mutex mtx;
+        bool isInitialized;
 
-        // constructor
-        Logger(const string & filePath);
+        // Default constructor with no path
+        Logger() : isInitialized(false) {}
+        
+        // Delete copy constructor and assignment operator
+        Logger(const Logger&) = delete;
+        Logger& operator=(const Logger&) = delete;
 
         // print log to log file
         void log(ofstream & logFile, const string & message);
