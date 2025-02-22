@@ -74,7 +74,7 @@ void Proxy::client_thread(Proxy* proxy, int client_fd) {
 
 // Main request handler - parses request and routes to appropriate handler
 void Proxy::handle_client(int client_fd) {
-    std::vector<char> buffer(4096);
+    std::vector<char> buffer(8192);
     ssize_t bytes_received = recv(client_fd, buffer.data(), buffer.size(), 0);
     
     if (bytes_received <= 0) {
@@ -150,11 +150,17 @@ void Proxy::handle_get(int client_fd, const Request& request) {
     send(server_fd, get_request.c_str(), get_request.length(), 0);
     
     // receive the response from the original server
-    std::vector<char> response_buffer(4096);
+    std::vector<char> response_buffer(8192);
     std::string full_response;
-    ssize_t bytes_received;
+    ssize_t bytes_received = 0;
+    ssize_t total_received = 0;
     
-    while ((bytes_received = recv(server_fd, response_buffer.data(), response_buffer.size(), 0)) > 0) {
+    while ((bytes_received = recv(server_fd, response_buffer.data() + total_received, 
+           response_buffer.size() - total_received, 0)) > 0) {
+        total_received += bytes_received;
+        if (total_received >= response_buffer.size()) {
+            response_buffer.resize(response_buffer.size() * 2);  // Double the buffer size
+        }
         full_response.append(response_buffer.data(), bytes_received);
     }
     
@@ -203,11 +209,17 @@ void Proxy::handle_post(int client_fd, const Request& request) {
     send(server_fd, post_request.c_str(), post_request.length(), 0);
     
     // Receive the response from the original server
-    std::vector<char> response_buffer(4096);
+    std::vector<char> response_buffer(8192);
     std::string full_response;
-    ssize_t bytes_received;
+    ssize_t bytes_received = 0;
+    ssize_t total_received = 0;
     
-    while ((bytes_received = recv(server_fd, response_buffer.data(), response_buffer.size(), 0)) > 0) {
+    while ((bytes_received = recv(server_fd, response_buffer.data() + total_received, 
+           response_buffer.size() - total_received, 0)) > 0) {
+        total_received += bytes_received;
+        if (total_received >= response_buffer.size()) {
+            response_buffer.resize(response_buffer.size() * 2);  // Double the buffer size
+        }
         full_response.append(response_buffer.data(), bytes_received);
     }
     

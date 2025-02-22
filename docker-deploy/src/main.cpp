@@ -1,5 +1,5 @@
 #include "proxy.hpp"
-#include "Logger.hpp"
+#include "logger.hpp"
 #include <iostream>
 
 int main() {

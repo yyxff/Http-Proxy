@@ -1,5 +1,4 @@
-#include "Logger.hpp"
-
+#include "logger.hpp"
 
 // singleton get instance
 Logger & Logger::getInstance(){
