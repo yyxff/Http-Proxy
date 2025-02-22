@@ -17,27 +17,25 @@
 class ProxyTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // 设置测试日志路径
+        // Set test log path
         std::string test_log_path = "test_logs/test_proxy.log";
         Logger::getInstance().setLogPath(test_log_path);
         
-        // 创建代理实例，端口设为0，由系统分配
+        // Create proxy instance with port 0 (system assigned)
         proxy = std::make_unique<Proxy>(0);
         
-        // 启动代理线程
+        // Start proxy thread
         proxy_thread = std::thread([this]() {
             proxy->run();
         });
-        // 等待代理线程启动并监听端口
+        // Wait for proxy thread to start and listen
         std::this_thread::sleep_for(std::chrono::seconds(1));
         
-        // 获取代理实际端口
+        // Get actual proxy port
         proxy_port = proxy->getPort();
     }
 
     void TearDown() override {
-        // Stop proxy with timeout
-        auto start = std::chrono::steady_clock::now();
         proxy->stop();
         
         if (proxy_thread.joinable()) {
@@ -56,7 +54,7 @@ protected:
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    // 创建并连接到代理的客户端 socket
+    // Create and connect to proxy client socket
     int create_client_socket() {
         int sock = socket(AF_INET, SOCK_STREAM, 0);
         EXPECT_GE(sock, 0) << "Failed to create client socket.";
@@ -178,14 +176,14 @@ TEST_F(ProxyTest, TestConnect) {
     try {
         int client_sock = create_client_socket();
         
-        // 发送 CONNECT 请求，建立到 httpbin.org:80 的隧道
+        // Send CONNECT request to establish tunnel to httpbin.org:80
         std::string connect_req =
             "CONNECT httpbin.org:80 HTTP/1.1\r\n"
             "Host: httpbin.org:80\r\n\r\n";
         ssize_t sent = send(client_sock, connect_req.c_str(), connect_req.size(), 0);
         EXPECT_EQ(sent, static_cast<ssize_t>(connect_req.size())) << "CONNECT request not fully sent.";
         
-        // 设置接收超时
+        // Set receive timeout
         struct timeval tv;
         tv.tv_sec = 5;
         tv.tv_usec = 0;
@@ -200,7 +198,7 @@ TEST_F(ProxyTest, TestConnect) {
         EXPECT_TRUE(initial_resp.find("200 Connection established") != std::string::npos)
             << "Unexpected CONNECT response: " << initial_resp;
         
-        // 隧道建立后，通过隧道发送 GET 请求到 httpbin.org/get
+        // Tunnel established, send GET request through tunnel to httpbin.org/get
         std::string tunneled_get =
             "GET /get HTTP/1.1\r\n"
             "Host: httpbin.org\r\n"
@@ -209,7 +207,7 @@ TEST_F(ProxyTest, TestConnect) {
         EXPECT_EQ(sent, static_cast<ssize_t>(tunneled_get.size()))
             << "Failed to send tunneled GET request.";
         
-        // 读取隧道中返回的响应（可能需要循环读取直到连接关闭）
+        // Read tunneled response (may need to loop until connection closes)
         std::string tunneled_response;
         size_t total_received = 0;
         const size_t MAX_SIZE = 1024 * 1024; // 1MB safety limit
