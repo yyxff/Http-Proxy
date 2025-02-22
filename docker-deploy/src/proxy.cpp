@@ -14,7 +14,8 @@ Proxy::Proxy(int port) :
     server_fd(-1), 
     port(port), 
     logger(Logger::getInstance()),
-    running(false) {}
+    running(false),
+    shutdown_requested(false) {}
 
 Proxy::~Proxy() {
     for (auto& thread : threads) {
@@ -70,25 +71,37 @@ void Proxy::setup_server() {
     logger.info("successfully set up server on port " + std::to_string(port));
 }
 
-// Accept incoming client connections and create threads to handle them
 void Proxy::start_accepting() {
     while(running) {
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
+        
+        // Set accept timeout to allow checking running flag
+        struct timeval tv;
+        tv.tv_sec = 1;  // 1 second timeout
+        tv.tv_usec = 0;
+        setsockopt(server_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+        
         int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
         
-        if (!running) break;  // check if should stop
+        if (!running) break;
         
         if (client_fd < 0) {
-            if (errno != EINTR) {  // ignore interrupted system calls
-                logger.warning("Failed to accept connection: " + std::string(strerror(errno)));
+            if (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR) {
+                continue;  // Timeout or interrupted, check running flag
             }
+            logger.warning("Failed to accept connection: " + std::string(strerror(errno)));
             continue;
         }
 
-        threads.emplace_back(&Proxy::client_thread, this, client_fd);
+        {
+            std::lock_guard<std::mutex> lock(thread_mutex);
+            threads.emplace_back(&Proxy::client_thread, this, client_fd);
+        }
     }
-} 
+    
+    logger.info("Accepting loop terminated");
+}
 
 void Proxy::client_thread(Proxy* proxy, int client_fd) {
     proxy->handle_client(client_fd);
@@ -652,18 +665,31 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
 }
 
 void Proxy::stop() {
+    if (!running) return;
+    
+    logger.info("Initiating proxy shutdown...");
     running = false;
+    shutdown_requested = true;
+
+    // Close server socket to interrupt accept
     if (server_fd >= 0) {
+        shutdown(server_fd, SHUT_RDWR);
         close(server_fd);
         server_fd = -1;
     }
-    // wait for all client threads to finish
-    for (auto& thread : threads) {
-        if (thread.joinable()) {
-            thread.join();
+
+    // Wait for all client threads with timeout
+    {
+        std::lock_guard<std::mutex> lock(thread_mutex);
+        for (auto& thread : threads) {
+            if (thread.joinable()) {
+                thread.join();
+            }
         }
+        threads.clear();
     }
-    threads.clear();
+
+    logger.info("Proxy shutdown complete");
 }
 
 std::pair<std::string, int> Proxy::parse_host_and_port(const std::string& host_str) {

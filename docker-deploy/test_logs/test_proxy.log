@@ -1,0 +1,83 @@
+[INFO] 2025-02-22 10:15:29 setting up server...
+[INFO] 2025-02-22 10:15:29 successfully set up server on port 59179
+[0] 2025-02-22 10:15:30 "GET http://httpbin.org/get HTTP/1.1" from 127.0.0.1 @ 2025-02-22 10:15:30
+[0] 2025-02-22 10:15:30 Requesting "GET http://httpbin.org/get HTTP/1.1" from httpbin.org
+[DEBUG] 2025-02-22 10:15:30 Attempting to connect to httpbin.org:80
+[DEBUG] 2025-02-22 10:15:30 Successfully resolved hostname httpbin.org
+[DEBUG] 2025-02-22 10:15:30 Successfully created socket
+[DEBUG] 2025-02-22 10:15:30 Attempting to connect to IP: 54.84.170.143:80
+[DEBUG] 2025-02-22 10:15:30 Successfully connected to server
+[0] 2025-02-22 10:15:30 Successfully sent 97 bytes to server
+[0] 2025-02-22 10:15:30 Received 225 bytes from server
+[0] 2025-02-22 10:15:30 Response headers:
+HTTP/1.1 200 OK
+Date: Sat, 22 Feb 2025 15:15:30 GMT
+Content-Type: application/json
+Content-Length: 253
+Connection: close
+Server: gunicorn/19.9.0
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Credentials: true
+[0] 2025-02-22 10:15:30 Found Content-Length: 253
+[0] 2025-02-22 10:15:30 Received 253 bytes from server
+[0] 2025-02-22 10:15:30 Received complete response with Content-Length
+[0] 2025-02-22 10:15:30 Received "HTTP/1.1 200 OK" from httpbin.org
+[0] 2025-02-22 10:15:30 Full response length: 478 bytes
+[0] 2025-02-22 10:15:30 Successfully sent response to client
+[INFO] 2025-02-22 10:15:30 Initiating proxy shutdown...
+[INFO] 2025-02-22 10:15:30 Accepting loop terminated
+[INFO] 2025-02-22 10:15:30 Proxy shutdown complete
+[INFO] 2025-02-22 10:15:30 setting up server...
+[INFO] 2025-02-22 10:15:30 successfully set up server on port 34261
+[1] 2025-02-22 10:15:31 "POST http://httpbin.org/post HTTP/1.1" from 127.0.0.1 @ 2025-02-22 10:15:31
+[1] 2025-02-22 10:15:31 Requesting "POST http://httpbin.org/post" from httpbin.org
+[DEBUG] 2025-02-22 10:15:31 Attempting to connect to httpbin.org:80
+[DEBUG] 2025-02-22 10:15:31 Successfully resolved hostname httpbin.org
+[DEBUG] 2025-02-22 10:15:31 Successfully created socket
+[DEBUG] 2025-02-22 10:15:31 Attempting to connect to IP: 54.84.170.143:80
+[DEBUG] 2025-02-22 10:15:31 Successfully connected to server
+[1] 2025-02-22 10:15:31 Successfully connected to server httpbin.org:80
+[1] 2025-02-22 10:15:31 DEBUG: Sending request:
+POST /post HTTP/1.1
+Host: httpbin.org
+Connection: close
+Content-Length: 9
+Content-Type: application/x-www-form-urlencoded
+
+test=data
+[1] 2025-02-22 10:15:31 Successfully sent 138 bytes to server
+[1] 2025-02-22 10:15:31 Received 225 bytes from server
+[1] 2025-02-22 10:15:31 Response headers:
+HTTP/1.1 200 OK
+Date: Sat, 22 Feb 2025 15:15:31 GMT
+Content-Type: application/json
+Content-Length: 369
+Connection: close
+Server: gunicorn/19.9.0
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Credentials: true
+[1] 2025-02-22 10:15:31 Found Content-Length: 369
+[1] 2025-02-22 10:15:31 Received 369 bytes from server
+[1] 2025-02-22 10:15:31 Received complete response with Content-Length
+[1] 2025-02-22 10:15:31 Received "HTTP/1.1 200 OK" from httpbin.org
+[1] 2025-02-22 10:15:31 Full response length: 594 bytes
+[1] 2025-02-22 10:15:31 Successfully sent response to client
+[INFO] 2025-02-22 10:15:31 Initiating proxy shutdown...
+[INFO] 2025-02-22 10:15:31 Proxy shutdown complete
+[INFO] 2025-02-22 10:15:31 Accepting loop terminated
+[INFO] 2025-02-22 10:15:31 setting up server...
+[INFO] 2025-02-22 10:15:31 successfully set up server on port 60859
+[2] 2025-02-22 10:15:32 "CONNECT httpbin.org:80 HTTP/1.1" from 127.0.0.1 @ 2025-02-22 10:15:32
+[2] 2025-02-22 10:15:32 Requesting "CONNECT httpbin.org:80 HTTP/1.1" from httpbin.org
+[DEBUG] 2025-02-22 10:15:32 Attempting to connect to httpbin.org:80
+[DEBUG] 2025-02-22 10:15:32 Successfully resolved hostname httpbin.org
+[DEBUG] 2025-02-22 10:15:32 Successfully created socket
+[DEBUG] 2025-02-22 10:15:32 Attempting to connect to IP: 54.84.170.143:80
+[DEBUG] 2025-02-22 10:15:32 Successfully connected to server
+[2] 2025-02-22 10:15:32 Successfully connected to destination server httpbin.org:80
+[2] 2025-02-22 10:15:33 Responding "HTTP/1.1 200 Connection established"
+[2] 2025-02-22 10:15:33 Starting CONNECT tunnel
+[INFO] 2025-02-22 10:15:33 Initiating proxy shutdown...
+[INFO] 2025-02-22 10:15:33 Accepting loop terminated
+[2] 2025-02-22 10:15:33 Tunnel closed. Total bytes: client->server=59, server->client=422
+[INFO] 2025-02-22 10:15:33 Proxy shutdown complete

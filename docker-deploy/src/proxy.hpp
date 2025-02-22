@@ -10,6 +10,7 @@
 #include <thread>
 #include <mutex>
 #include "logger.hpp"
+#include <condition_variable>
 
 class Proxy {
 public:
@@ -73,6 +74,9 @@ private:
     Logger& logger;
     bool running;
     std::vector<std::thread> threads;
+    std::mutex thread_mutex;
+    std::condition_variable shutdown_cv;
+    bool shutdown_requested;
 };
 
 #endif
