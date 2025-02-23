@@ -11,6 +11,8 @@
 #include <mutex>
 #include "Logger.hpp"
 #include <condition_variable>
+#include <boost/asio.hpp>
+#include <boost/beast.hpp>
 
 class Proxy {
 public:
@@ -68,6 +70,9 @@ private:
     
     // Parse host and port
     std::pair<std::string, int> parse_host_and_port(const std::string& host_str);
+
+    // receive full response by recv and beast parser
+    std::string receive(int server_fd, int id);
     
     int server_fd;
     int port;

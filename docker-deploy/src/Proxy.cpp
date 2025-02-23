@@ -10,6 +10,10 @@
 #include <thread>
 #include <chrono>
 
+namespace beast = boost::beast;
+namespace http = boost::beast::http;
+namespace asio = boost::asio;
+
 Proxy::Proxy(int port) : 
     server_fd(-1), 
     port(port), 
@@ -235,65 +239,8 @@ void Proxy::handle_get(int client_fd, const Request& request) {
         }
         logger.info(request.getId(), "Successfully sent " + std::to_string(total_sent) + " bytes to server");
 
-        std::string full_response;
-        char buffer[8192];
-        ssize_t bytes_received;
-        bool headers_complete = false;
-        size_t content_length = 0;
-        size_t body_start = 0;
-        bool is_chunked = false;
-        
-        while ((bytes_received = recv(server_fd, buffer, sizeof(buffer), 0)) > 0) {
-            logger.info(request.getId(), "Received " + std::to_string(bytes_received) + " bytes from server");
-            full_response.append(buffer, bytes_received);
-            
-            if (!headers_complete) {
-                size_t header_end = full_response.find("\r\n\r\n");
-                if (header_end != std::string::npos) {
-                    headers_complete = true;
-                    std::string headers = full_response.substr(0, header_end);
-                    logger.info(request.getId(), "Response headers:\n" + headers);
-                    body_start = header_end + 4;
-                    
-                    // Look for Content-Length
-                    size_t cl_pos = headers.find("Content-Length: ");
-                    if (cl_pos != std::string::npos) {
-                        size_t cl_end = headers.find("\r\n", cl_pos);
-                        std::string cl_str = headers.substr(cl_pos + 16, cl_end - (cl_pos + 16));
-                        content_length = std::stoul(cl_str);
-                        logger.info(request.getId(), "Found Content-Length: " + std::to_string(content_length));
-                    }
-                    
-                    // Look for chunked encoding
-                    if (headers.find("Transfer-Encoding: chunked") != std::string::npos) {
-                        is_chunked = true;
-                        logger.info(request.getId(), "Found chunked encoding");
-                    }
-                }
-            }
-            
-            if (headers_complete) {
-                if (content_length > 0) {
-                    if (full_response.length() >= body_start + content_length) {
-                        logger.info(request.getId(), "Received complete response with Content-Length");
-                        break;
-                    }
-                } else if (is_chunked) {
-                    if (full_response.find("\r\n0\r\n\r\n", body_start) != std::string::npos) {
-                        logger.info(request.getId(), "Received complete chunked response");
-                        break;
-                    }
-                } else if (bytes_received == 0) {
-                    logger.info(request.getId(), "Server closed connection");
-                    break;
-                }
-            }
-        }
-
-        if (bytes_received < 0 && errno != EWOULDBLOCK && errno != EAGAIN) {
-            throw std::runtime_error("Failed to receive response from server: " + 
-                                   std::string(strerror(errno)));
-        }
+        // receive full response from server
+        std::string full_response = receive(server_fd, request.getId());
 
         if (!full_response.empty()) {
             size_t pos = full_response.find("\r\n");
@@ -700,4 +647,63 @@ std::pair<std::string, int> Proxy::parse_host_and_port(const std::string& host_s
         return {host, port};
     }
     return {host_str, 80};  // default to port 80
+}
+
+
+// receive full response by recv and beast parser
+std::string Proxy::receive(int server_fd, int id){
+    std::string full_response;
+    char buffer[8192];
+    ssize_t bytes_received;
+
+    beast::flat_buffer dynamic_buffer;
+    http::response_parser<http::string_body> parser;
+    boost::system::error_code ec;
+
+    while (true) {
+        // keep recv ing if not fet full response
+        ssize_t bytes_received = recv(server_fd, buffer, sizeof(buffer), 0);
+        full_response.append(buffer, bytes_received);
+        if (bytes_received <= 0) {
+            if (bytes_received == 0) {
+                logger.debug(id, "connection closed");
+            } else {
+                logger.error(id, "recv failed!");
+            }
+            break;
+        }
+        logger.debug(id, "get "+to_string(bytes_received));
+
+        // append data to buffer
+        dynamic_buffer.commit(
+            boost::asio::buffer_copy(
+                dynamic_buffer.prepare(bytes_received),  
+                boost::asio::buffer(buffer, bytes_received)  
+            )
+        ); 
+
+        // try to parse data
+        parser.put(dynamic_buffer.data(), ec);
+        dynamic_buffer.consume(dynamic_buffer.size()); // clear processed data
+
+        if (ec) {
+            if (ec == http::error::need_more) {
+                logger.debug(id, "need more");
+                continue;
+            } else {
+                logger.error(id, "failed to parse data, ec:"+ec.message()+" code: "+to_string(ec.value()));
+                break;
+            }
+        }
+
+        // get all data
+        if (parser.is_done()) {
+            http::response<http::string_body>  res = parser.release();
+            logger.info(id, "successfully parsed response code("
+                            +to_string(res.result_int())+") bodyLen("+to_string(res.body().size())+")");
+            // logger.debug(full_response);
+            break;
+        }
+    }
+    return full_response;
 }
