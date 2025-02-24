@@ -120,7 +120,7 @@ void Proxy::handle_client(int client_fd) {
     
     std::vector<char> buffer(8192);
     ssize_t bytes_received = recv(client_fd, buffer.data(), buffer.size(), 0);
-    
+    logger.debug("received "+to_string(bytes_received)+"bytes");
     if (bytes_received <= 0) {
         if (bytes_received < 0) {
             logger.error("Failed to receive request: " + std::string(strerror(errno)));
@@ -332,7 +332,7 @@ std::string Proxy::build_post_request(const Request& request) {
     }
     
     req += "\r\n";
-    
+    logger.debug("body"+request.getBody());
     if (request.hasBody()) {
         req += request.getBody();
     }
