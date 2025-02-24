@@ -130,7 +130,12 @@ void Proxy::handle_client(int client_fd) {
     }
     
     Request request;
-    if (!request.parse(buffer)) {
+    // parse buffer to request
+    try{
+        Parser parser;
+        request = parser.parseRequest(buffer);
+        logger.debug("parse success"+request.getMethod());
+    }catch(std::runtime_error & e){
         std::string response = "HTTP/1.1 400 Bad Request\r\n"
                               "Content-Length: 15\r\n\r\n"
                               "400 Bad Request";
@@ -144,7 +149,6 @@ void Proxy::handle_client(int client_fd) {
     logger.info(request.getId(), "\"" + request.getMethod() + " " + request.getUrl() + 
                " " + request.getVersion() + "\" from " + client_ip + " @ " + 
                logger.getCurrentTime());
-    
     if (request.getMethod() == "GET") {
         handle_get(client_fd, request);
     }
@@ -304,12 +308,14 @@ std::string Proxy::build_post_request(const Request& request) {
     
     // copy all original headers, but skip Host and Connection
     for (const auto& header : request.getHeaders()) {
-        if (header.first != "Host" && header.first != "Connection") {
-            req += header.first + ": " + header.second + "\r\n";
-            if (header.first == "Content-Length") {
+        logger.debug(header.name_string().to_string()+to_string(header.name_string().to_string() != "Host"));
+        if (header.name_string().to_string() != "Host" && header.name_string().to_string() != "Connection") {
+            logger.debug(header.name_string().to_string());
+            req += header.name_string().to_string() + ": " + header.value().to_string() + "\r\n";
+            if (header.name_string().to_string() == "Content-Length") {
                 has_content_length = true;
             }
-            if (header.first == "Content-Type") {
+            if (header.name_string().to_string() == "Content-Type") {
                 has_content_type = true;
             }
         }
@@ -330,7 +336,7 @@ std::string Proxy::build_post_request(const Request& request) {
     if (request.hasBody()) {
         req += request.getBody();
     }
-    
+    logger.debug("get req:"+req);
     return req;
 }
 
@@ -354,7 +360,7 @@ void Proxy::handle_post(int client_fd, const Request& request) {
         }
         
         std::string post_request = build_post_request(request);
-        logger.debug(request.getId(), "DEBUG: Sending request:\n" + post_request);
+        logger.debug(request.getId(), "Sending request:\n" + post_request);
         
         // Send the request in chunks to handle large requests
         size_t total_sent = 0;
@@ -369,65 +375,7 @@ void Proxy::handle_post(int client_fd, const Request& request) {
         }
         logger.info(request.getId(), "Successfully sent " + std::to_string(total_sent) + " bytes to server");
         
-        std::string full_response;
-        char buffer[8192];
-        ssize_t bytes_received;
-        bool headers_complete = false;
-        size_t content_length = 0;
-        size_t body_start = 0;
-        bool is_chunked = false;
-        
-        while ((bytes_received = recv(server_fd, buffer, sizeof(buffer), 0)) > 0) {
-            logger.info(request.getId(), "Received " + std::to_string(bytes_received) + " bytes from server");
-            full_response.append(buffer, bytes_received);
-            
-            if (!headers_complete) {
-                size_t header_end = full_response.find("\r\n\r\n");
-                if (header_end != std::string::npos) {
-                    headers_complete = true;
-                    std::string headers = full_response.substr(0, header_end);
-                    logger.info(request.getId(), "Response headers:\n" + headers);
-                    body_start = header_end + 4;
-                    
-                    // Look for Content-Length
-                    size_t cl_pos = headers.find("Content-Length: ");
-                    if (cl_pos != std::string::npos) {
-                        size_t cl_end = headers.find("\r\n", cl_pos);
-                        std::string cl_str = headers.substr(cl_pos + 16, cl_end - (cl_pos + 16));
-                        content_length = std::stoul(cl_str);
-                        logger.info(request.getId(), "Found Content-Length: " + std::to_string(content_length));
-                    }
-                    
-                    // Look for chunked encoding
-                    if (headers.find("Transfer-Encoding: chunked") != std::string::npos) {
-                        is_chunked = true;
-                        logger.info(request.getId(), "Found chunked encoding");
-                    }
-                }
-            }
-            
-            if (headers_complete) {
-                if (content_length > 0) {
-                    if (full_response.length() >= body_start + content_length) {
-                        logger.info(request.getId(), "Received complete response with Content-Length");
-                        break;
-                    }
-                } else if (is_chunked) {
-                    if (full_response.find("\r\n0\r\n\r\n", body_start) != std::string::npos) {
-                        logger.info(request.getId(), "Received complete chunked response");
-                        break;
-                    }
-                } else if (bytes_received == 0) {
-                    logger.info(request.getId(), "Server closed connection");
-                    break;
-                }
-            }
-        }
-        
-        if (bytes_received < 0 && errno != EWOULDBLOCK && errno != EAGAIN) {
-            throw std::runtime_error("Failed to receive response from server: " + 
-                                   std::string(strerror(errno)));
-        }
+        std::string full_response = receive(server_fd, request.getId());
         
         if (!full_response.empty()) {
             size_t pos = full_response.find("\r\n");

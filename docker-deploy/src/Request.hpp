@@ -5,35 +5,48 @@
 #include <vector>
 #include <map>
 #include <atomic>
+#include <boost/asio.hpp>
+#include <boost/beast.hpp>
+#include "Logger.hpp"
+
+namespace beast = boost::beast;
+namespace http = boost::beast::http;
+namespace asio = boost::asio;
+
 
 class Request {
 private:
     static std::atomic<int> next_id;
     int id;
-    std::string method;
-    std::string url;
-    std::string version;
-    std::map<std::string, std::string> headers;
-    std::vector<char> body;
+    http::fields headers;
+    std::string body;
+    static inline Logger & logger = Logger::getInstance();
+    http::request<http::string_body> request;
+    std::string requestStr;
 
 public:
-    Request() : id(next_id++) {}
+    Request() : id(next_id++){}
+    Request(http::request<http::string_body> req):id(next_id++),request(req),headers(req.base()),body(req.body()){}
+
     int getId() const { return id; }
     
-    bool parse(const std::vector<char>& data);
-
-    std::string getMethod() const { return method; }
-    std::string getUrl() const { return url; }
-    std::string getVersion() const { return version; }
+    std::string getMethod() const { return request.method_string().to_string(); }
+    std::string getUrl() const { return request.target().to_string(); }
+    std::string getVersion() const { 
+        return "HTTP/" 
+        + std::to_string(request.version() / 10) 
+        + "." 
+        + std::to_string(request.version() % 10); 
+    }
     std::string getHeader(const std::string& key) const;
 
-    bool isGet() const { return method == "GET"; }
-    bool isPost() const { return method == "POST"; }
-    bool isConnect() const { return method == "CONNECT"; }
+    bool isGet() const { return getMethod() == "GET"; }
+    bool isPost() const { return getMethod() == "POST"; }
+    bool isConnect() const { return getMethod() == "CONNECT"; }
 
-    const std::map<std::string, std::string>& getHeaders() const { return headers; }
+    const http::fields & getHeaders() const { return headers; }
     bool hasBody() const { return !body.empty(); }
-    std::string getBody() const { return std::string(body.begin(), body.end()); }
+    std::string getBody() const { return body; }
 };
 
 #endif
