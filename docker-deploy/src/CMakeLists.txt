@@ -9,6 +9,7 @@ add_library(proxy_lib
     Proxy.cpp
     Request.cpp
     Logger.cpp
+    Parser.cpp
 )
 
 # Add main executable
@@ -18,6 +19,7 @@ add_executable(proxy
     Cache.cpp
     Request.cpp
     Logger.cpp
+    Parser.cpp
 )
 
 target_link_libraries(proxy pthread)

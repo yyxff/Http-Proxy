@@ -10,6 +10,7 @@
 #include <thread>
 #include <mutex>
 #include "Logger.hpp"
+#include "Parser.hpp"
 #include <condition_variable>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
@@ -73,6 +74,9 @@ private:
 
     // receive full response by recv and beast parser
     std::string receive(int server_fd, int id);
+
+    // send full data to fd
+    void send_all(int client_fd, std::string full_response, int id);
     
     int server_fd;
     int port;
