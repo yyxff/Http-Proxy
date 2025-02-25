@@ -215,7 +215,7 @@ void Proxy::handle_get(int client_fd, const Request& request) {
     std::string host_with_port = extract_host(request.getUrl());
     auto [host, server_port] = parse_host_and_port(host_with_port);
 
-    std::string request_str = build_get_request(request);
+    std::string request_get = build_get_request(request);
     logger.info(request.getId(), "Requesting \"" + request.getMethod() + " " + 
                request.getUrl() + " " + request.getVersion() + "\" from " + host_with_port);
 
@@ -231,48 +231,20 @@ void Proxy::handle_get(int client_fd, const Request& request) {
         }
 
         // Send the request in chunks to handle large requests
-        size_t total_sent = 0;
-        while (total_sent < request_str.length()) {
-            ssize_t sent = send(server_fd, request_str.c_str() + total_sent, 
-                              request_str.length() - total_sent, 0);
-            if (sent < 0) {
-                throw std::runtime_error("Failed to send request to server: " + 
-                                       std::string(strerror(errno)));
-            }
-            total_sent += sent;
-        }
-        logger.info(request.getId(), "Successfully sent " + std::to_string(total_sent) + " bytes to server");
+        send_all(server_fd, request_get, request.getId());
 
         // receive full response from server
         std::string full_response = receive(server_fd, request.getId());
 
+        // if ok, send response to client
         if (!full_response.empty()) {
-            size_t pos = full_response.find("\r\n");
-            if (pos != std::string::npos) {
-                std::string response_line = full_response.substr(0, pos);
-                logger.info(request.getId(), "Received \"" + response_line + "\" from " + host);
-                logger.info(request.getId(), "Full response length: " + 
-                         std::to_string(full_response.length()) + " bytes");
-                
-                // Send response to client in chunks
-                size_t total_sent = 0;
-                while (total_sent < full_response.length()) {
-                    ssize_t sent = send(client_fd, full_response.c_str() + total_sent,
-                                      full_response.length() - total_sent, 0);
-                    if (sent < 0) {
-                        throw std::runtime_error("Failed to send response to client: " + 
-                                               std::string(strerror(errno)));
-                    }
-                    total_sent += sent;
-                }
-                logger.info(request.getId(), "Successfully sent response to client");
-            } else {
-                throw std::runtime_error("Invalid response format");
-            }
+            logger.info(request.getId(), "From " + host);
+            send_all(client_fd, full_response, request.getId());
         } else {
             throw std::runtime_error("Empty response from server");
         }
 
+        // close it
         close(server_fd);
     }
     catch (const std::exception& e) {
@@ -346,6 +318,10 @@ void Proxy::handle_post(int client_fd, const Request& request) {
     auto [host_name, server_port] = parse_host_and_port(host);
     
     logger.info(request.getId(), "Requesting \"POST " + request.getUrl() + "\" from " + host);
+
+    // build post request
+    std::string request_post = build_post_request(request);
+    logger.debug(request.getId(), "Sending request:\n" + request_post);
     
     try {
         int server_fd = connect_to_server(host_name, server_port);
@@ -359,51 +335,21 @@ void Proxy::handle_post(int client_fd, const Request& request) {
             throw std::runtime_error("Failed to set socket timeout");
         }
         
-        std::string post_request = build_post_request(request);
-        logger.debug(request.getId(), "Sending request:\n" + post_request);
-        
         // Send the request in chunks to handle large requests
-        size_t total_sent = 0;
-        while (total_sent < post_request.length()) {
-            ssize_t sent = send(server_fd, post_request.c_str() + total_sent, 
-                              post_request.length() - total_sent, 0);
-            if (sent < 0) {
-                throw std::runtime_error("Failed to send request to server: " + 
-                                       std::string(strerror(errno)));
-            }
-            total_sent += sent;
-        }
-        logger.info(request.getId(), "Successfully sent " + std::to_string(total_sent) + " bytes to server");
+        send_all(server_fd, request_post, request.getId());
         
+        // receive response from server
         std::string full_response = receive(server_fd, request.getId());
         
+        // if ok, send response to client
         if (!full_response.empty()) {
-            size_t pos = full_response.find("\r\n");
-            if (pos != std::string::npos) {
-                std::string response_line = full_response.substr(0, pos);
-                logger.info(request.getId(), "Received \"" + response_line + "\" from " + host);
-                logger.info(request.getId(), "Full response length: " + 
-                         std::to_string(full_response.length()) + " bytes");
-                
-                // Send response to client in chunks
-                size_t total_sent = 0;
-                while (total_sent < full_response.length()) {
-                    ssize_t sent = send(client_fd, full_response.c_str() + total_sent,
-                                      full_response.length() - total_sent, 0);
-                    if (sent < 0) {
-                        throw std::runtime_error("Failed to send response to client: " + 
-                                               std::string(strerror(errno)));
-                    }
-                    total_sent += sent;
-                }
-                logger.info(request.getId(), "Successfully sent response to client");
-            } else {
-                throw std::runtime_error("Invalid response format");
-            }
+            logger.info(request.getId(), "From " + host);
+            send_all(client_fd, full_response, request.getId());
         } else {
             throw std::runtime_error("Empty response from server");
         }
         
+        // close it
         close(server_fd);
     }
     catch (const std::exception& e) {
@@ -654,4 +600,31 @@ std::string Proxy::receive(int server_fd, int id){
         }
     }
     return full_response;
+}
+
+
+// send full data to fd
+void Proxy::send_all(int client_fd, std::string full_response, int id){
+    size_t pos = full_response.find("\r\n");
+    if (pos != std::string::npos) {
+        std::string response_line = full_response.substr(0, pos);
+        
+        logger.info(id, "Full response length: " + 
+                    std::to_string(full_response.length()) + " bytes");
+        
+        // Send response to client in chunks
+        size_t total_sent = 0;
+        while (total_sent < full_response.length()) {
+            ssize_t sent = send(client_fd, full_response.c_str() + total_sent,
+                                full_response.length() - total_sent, 0);
+            if (sent < 0) {
+                throw std::runtime_error("Failed to send response to client: " + 
+                                        std::string(strerror(errno)));
+            }
+            total_sent += sent;
+        }
+        logger.info(id, "Successfully sent "+to_string(total_sent)+" bytes to client");
+    } else {
+        throw std::runtime_error("Invalid response format");
+    }
 }
