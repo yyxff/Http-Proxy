@@ -14,6 +14,7 @@
 #include <condition_variable>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
+#include <cerrno>
 
 class Proxy {
 public:

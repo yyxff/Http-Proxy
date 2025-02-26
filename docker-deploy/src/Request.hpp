@@ -25,7 +25,7 @@ private:
     std::string requestStr;
 
 public:
-    Request() : id(next_id++){}
+    Request() : id(-1){}
     Request(http::request<http::string_body> req):id(next_id++),request(req),headers(req.base()),body(req.body()){}
 
     int getId() const { return id; }
