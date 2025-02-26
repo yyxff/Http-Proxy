@@ -112,14 +112,21 @@ void Cache::addToCache(const string& url,
     
     // create and add the new entry
     CacheEntry entry(response_line, response_headers, response_body);
-    cache_map[url] = entry;
+    
+    // use insert instead of operator[]
+    cache_map.insert(std::make_pair(url, entry));
+
+    // or use emplace
+    // cache_map.emplace(url, entry);
+    
     current_size += entry_size;
     
     // update the expiry time map
     updateExpiryMap(url, entry.getExpiresTime());
     
+    time_t expires_time = entry.getExpiresTime();
     logger.debug("Added to cache: " + url + " (expires: " + 
-                string(ctime(&entry.getExpiresTime())) + ")");
+                string(ctime(&expires_time)) + ")");
 }
 
 CacheEntry* Cache::getEntry(const string& url) {
@@ -147,7 +154,7 @@ void Cache::removeEntry(const string& url) {
 }
 
 size_t Cache::getCurrentSize() const {
-    lock_guard<mutex> lock(cache_mutex);
+    // do not use lock, because this is a simple getter method
     return current_size;
 }
 
