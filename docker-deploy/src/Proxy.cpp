@@ -29,6 +29,7 @@ Proxy::~Proxy() {
     }
     if (server_fd >= 0) {
         close(server_fd);
+        logger.debug("closed server fd: "+to_string(server_fd));
     }
 }
 
@@ -87,6 +88,7 @@ void Proxy::start_accepting() {
         setsockopt(server_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
         
         int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+        logger.debug("build a new client fd "+to_string(client_fd));
         
         if (!running) break;
         
@@ -109,10 +111,12 @@ void Proxy::start_accepting() {
 
 void Proxy::client_thread(Proxy* proxy, int client_fd) {
     proxy->handle_client(client_fd);
+    // logger.debug("handle client fd "+to_string(client_fd));
 }
 
 // Main request handler - parses request and routes to appropriate handler
 void Proxy::handle_client(int client_fd) {
+    logger.debug("handle client fd "+to_string(client_fd));
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);
     getpeername(client_fd, (struct sockaddr *)&addr, &addr_len);
@@ -120,12 +124,13 @@ void Proxy::handle_client(int client_fd) {
     
     std::vector<char> buffer(8192);
     ssize_t bytes_received = recv(client_fd, buffer.data(), buffer.size(), 0);
-    logger.debug("received "+to_string(bytes_received)+"bytes");
+    logger.debug("received "+to_string(bytes_received)+" bytes from client "+to_string(client_fd));
     if (bytes_received <= 0) {
         if (bytes_received < 0) {
             logger.error("Failed to receive request: " + std::string(strerror(errno)));
         }
         close(client_fd);
+        logger.debug("closed client fd: "+to_string(client_fd));
         return;
     }
     
@@ -134,7 +139,7 @@ void Proxy::handle_client(int client_fd) {
     try{
         Parser parser;
         request = parser.parseRequest(buffer);
-        logger.debug("parse success"+request.getMethod());
+        logger.debug(request.getId()," on client fd "+to_string(client_fd)+" parse success "+request.getMethod());
     }catch(std::runtime_error & e){
         std::string response = "HTTP/1.1 400 Bad Request\r\n"
                               "Content-Length: 15\r\n\r\n"
@@ -142,6 +147,7 @@ void Proxy::handle_client(int client_fd) {
         send(client_fd, response.c_str(), response.length(), 0);
         logger.warning(request.getId(), "Responding \"HTTP/1.1 400 Bad Request\"");
         close(client_fd);
+        logger.debug(request.getId(),"handle client1 closed client fd: "+to_string(client_fd));
         return;
     }
     
@@ -156,7 +162,9 @@ void Proxy::handle_client(int client_fd) {
         handle_post(client_fd, request);
     }
     else if (request.getMethod() == "CONNECT") {
+        logger.debug(request.getId(), "handle connect start");
         handle_connect(client_fd, request);
+        logger.debug(request.getId(), "handle connect done");
     }
     else {
         std::string response = "HTTP/1.1 405 Method Not Allowed\r\n"
@@ -167,8 +175,9 @@ void Proxy::handle_client(int client_fd) {
         logger.warning(request.getId(), "Responding \"HTTP/1.1 405 Method Not Allowed\" for method \"" + 
                   request.getMethod() + "\"");
     }
-    
+    logger.debug(request.getId(),"ready to close fd "+to_string(client_fd));
     close(client_fd);
+    logger.debug(request.getId(),"handle client2 closed client fd: "+to_string(client_fd));
 }
 
 // from URL
@@ -246,6 +255,7 @@ void Proxy::handle_get(int client_fd, const Request& request) {
 
         // close it
         close(server_fd);
+        logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
     }
     catch (const std::exception& e) {
         logger.error(request.getId(), "ERROR in handle_get: " + std::string(e.what()));
@@ -351,6 +361,7 @@ void Proxy::handle_post(int client_fd, const Request& request) {
         
         // close it
         close(server_fd);
+        logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
     }
     catch (const std::exception& e) {
         logger.error(request.getId(), "ERROR in handle_post: " + std::string(e.what()));
@@ -382,7 +393,7 @@ int Proxy::connect_to_server(const std::string& host, int port) {
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
     memcpy(&server_addr.sin_addr.s_addr, server->h_addr, server->h_length);
-    
+    logger.debug("memcpy done");
     // Set connect timeout
     struct timeval tv;
     tv.tv_sec = 5;  // 5 seconds timeout
@@ -393,6 +404,7 @@ int Proxy::connect_to_server(const std::string& host, int port) {
     if (setsockopt(server_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv)) < 0) {
         logger.error("Failed to set send timeout: " + std::string(strerror(errno)));
     }
+    logger.debug("socket set done");
 
     // Convert IP to string for logging
     char ip_str[INET_ADDRSTRLEN];
@@ -401,6 +413,7 @@ int Proxy::connect_to_server(const std::string& host, int port) {
 
     if (connect(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         close(server_fd);
+        logger.debug("closed server fd: "+to_string(server_fd));
         logger.error("Failed to connect to server: " + std::string(strerror(errno)));
         throw std::runtime_error("Failed to connect to server");
     }
@@ -420,11 +433,12 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
     try {
         // Connect to the destination server
         int server_fd = connect_to_server(host, port);
-        logger.info(request.getId(), "Successfully connected to destination server " + host + ":" + std::to_string(port));
+        logger.info(request.getId(), "Successfully connected to destination server " + host + ":" + std::to_string(port)+" on fd "+to_string(server_fd));
 
         // Send 200 OK to client
         std::string response = "HTTP/1.1 200 Connection established\r\n\r\n";
         ssize_t sent = send(client_fd, response.c_str(), response.length(), 0);
+        logger.debug(request.getId(), "send response "+to_string(sent)+"/"+to_string(response.size()));
         if (sent < 0) {
             throw std::runtime_error("Failed to send connection established response: " + std::string(strerror(errno)));
         }
@@ -436,65 +450,81 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
         logger.info(request.getId(), "Responding \"HTTP/1.1 200 Connection established\"");
         logger.info(request.getId(), "Starting CONNECT tunnel");
 
-        // Create a thread to handle the tunnel
-        std::thread tunnel_thread([this, client_fd, server_fd, request]() {
-            try {
-                // Set up select() for both sockets
-                fd_set read_fds;
-                int max_fd = std::max(client_fd, server_fd) + 1;
-                std::vector<char> buffer(8192);
-                size_t total_bytes_client_to_server = 0;
-                size_t total_bytes_server_to_client = 0;
+        // handle tunnel
+        try {
+            // Set up select() for both sockets
+            fd_set read_fds;
+            int max_fd = std::max(client_fd, server_fd) + 1;
+            std::vector<char> buffer(8192);
+            size_t total_bytes_client_to_server = 0;
+            size_t total_bytes_server_to_client = 0;
 
-                while (true) {
-                    FD_ZERO(&read_fds);
-                    FD_SET(client_fd, &read_fds);
-                    FD_SET(server_fd, &read_fds);
+            // pass data between client and server
+            while (true) {
+                FD_ZERO(&read_fds);
+                FD_SET(client_fd, &read_fds);
+                FD_SET(server_fd, &read_fds);
 
-                    // Set select timeout (5 seconds)
-                    struct timeval timeout;
-                    timeout.tv_sec = 5;
-                    timeout.tv_usec = 0;
+                // Set select timeout (5 seconds)
+                struct timeval timeout;
+                timeout.tv_sec = 5;
+                timeout.tv_usec = 0;
 
-                    int activity = select(max_fd, &read_fds, NULL, NULL, &timeout);
-                    if (activity < 0) {
-                        if (errno == EINTR) continue;
+                int activity = select(max_fd, &read_fds, NULL, NULL, &timeout);
+                if (activity < 0) {
+                    if (errno == EINTR) continue;
+                    logger.debug(request.getId(),"activity == "+to_string(activity)+" break loop");
+                    break;
+                }
+                if (activity == 0) break;  // timeout
+
+                if (FD_ISSET(client_fd, &read_fds)) {
+                    ssize_t bytes_read = recv(client_fd, buffer.data(), buffer.size(), 0);
+                    if (bytes_read <= 0) {
+                        logger.debug(request.getId(),"client->server break: read "+to_string(bytes_read)+" on fd: "+to_string(client_fd));
+                        int er = errno;
+                        logger.debug(request.getId(), "errno: "+to_string(er));
                         break;
                     }
-                    if (activity == 0) break;  // timeout
-
-                    if (FD_ISSET(client_fd, &read_fds)) {
-                        ssize_t bytes_read = recv(client_fd, buffer.data(), buffer.size(), 0);
-                        if (bytes_read <= 0) break;
-                        if (send(server_fd, buffer.data(), bytes_read, 0) <= 0) break;
-                        total_bytes_client_to_server += bytes_read;
+                    size_t bytes_send = 0;
+                    if ((bytes_send = send(server_fd, buffer.data(), bytes_read, 0)) <= 0) {
+                        logger.debug(request.getId(),"client->server break: send "+to_string(bytes_read));
+                        break;
                     }
 
-                    if (FD_ISSET(server_fd, &read_fds)) {
-                        ssize_t bytes_read = recv(server_fd, buffer.data(), buffer.size(), 0);
-                        if (bytes_read <= 0) break;
-                        if (send(client_fd, buffer.data(), bytes_read, 0) <= 0) break;
-                        total_bytes_server_to_client += bytes_read;
-                    }
+                    total_bytes_client_to_server += bytes_read;
+                    logger.debug(request.getId(),"send server "+to_string(bytes_send)+"/"+to_string(bytes_read));
                 }
 
-                logger.info(request.getId(), "Tunnel closed. Total bytes: client->server=" + 
-                          std::to_string(total_bytes_client_to_server) + ", server->client=" + 
-                          std::to_string(total_bytes_server_to_client));
+                if (FD_ISSET(server_fd, &read_fds)) {
+                    ssize_t bytes_read = recv(server_fd, buffer.data(), buffer.size(), 0);
+                    if (bytes_read <= 0) {
+                        logger.debug(request.getId(),"server->client break: read "+to_string(bytes_read));
+                        break;
+                    }
+                    size_t bytes_send = 0;
+                    if ((bytes_send = send(client_fd, buffer.data(), bytes_read, 0)) <= 0) {
+                        logger.debug(request.getId(),"server->client break: send "+to_string(bytes_read));
+                        break;
+                    }
+                    total_bytes_server_to_client += bytes_read;
+                    logger.debug(request.getId(),"send client "+to_string(bytes_send)+"/"+to_string(bytes_read));
+                }
             }
-            catch (const std::exception& e) {
-                logger.error(request.getId(), "ERROR in tunnel thread: " + std::string(e.what()));
-            }
 
-            close(server_fd);
-            close(client_fd);
-        });
+            logger.info(request.getId(), "Tunnel closed. Total bytes: client->server=" + 
+                        std::to_string(total_bytes_client_to_server) + ", server->client=" + 
+                        std::to_string(total_bytes_server_to_client));
+        }
+        catch (const std::exception& e) {
+            logger.error(request.getId(), "ERROR in tunnel thread: " + std::string(e.what()));
+        }
 
-        // Detach the thread and let it run independently
-        tunnel_thread.detach();
-
-        // Wait for a short time to ensure the tunnel is established
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        close(server_fd);
+        logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
+        close(client_fd);
+        logger.debug(request.getId(),"handle connect1 closed client fd: "+to_string(client_fd));
+        
     }
     catch (const std::exception& e) {
         logger.error(request.getId(), "ERROR in handle_connect: " + std::string(e.what()));
@@ -502,6 +532,7 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
         send(client_fd, error_response.c_str(), error_response.length(), 0);
         logger.error(request.getId(), "Responding \"HTTP/1.1 502 Bad Gateway\"");
         close(client_fd);
+        logger.debug(request.getId(),"handle connect2 closed client fd: "+to_string(client_fd));
     }
 }
 
@@ -516,6 +547,7 @@ void Proxy::stop() {
     if (server_fd >= 0) {
         shutdown(server_fd, SHUT_RDWR);
         close(server_fd);
+        logger.debug("closed server fd: "+to_string(server_fd));
         server_fd = -1;
     }
 
@@ -577,16 +609,20 @@ std::string Proxy::receive(int server_fd, int id){
         ); 
 
         // try to parse data
-        parser.put(dynamic_buffer.data(), ec);
-        dynamic_buffer.consume(dynamic_buffer.size()); // clear processed data
+        while(dynamic_buffer.size() > 0){
+            size_t bytes_rest = dynamic_buffer.size();
+            size_t bytes_parsed = parser.put(dynamic_buffer.data(), ec);
+            dynamic_buffer.consume(bytes_parsed); // clear processed data
+            // logger.debug(id, "parsed "+to_string(bytes_parsed)+"/"+to_string(bytes_rest));
 
-        if (ec) {
-            if (ec == http::error::need_more) {
-                logger.debug(id, "need more");
-                continue;
-            } else {
-                logger.error(id, "failed to parse data, ec:"+ec.message()+" code: "+to_string(ec.value()));
-                break;
+            if (ec) {
+                if (ec == http::error::need_more) {
+                    logger.debug(id, "need more");
+                    break;
+                } else {
+                    logger.error(id, "failed to parse data, ec:"+ec.message()+" code: "+to_string(ec.value()));
+                    break;
+                }
             }
         }
 
