@@ -1,0 +1,267 @@
+#include "Cache.hpp"
+#include <sstream>
+#include <algorithm>
+#include <regex>
+#include <ctime>
+
+CacheEntry::CacheEntry(const string& response_line, 
+                       const string& response_headers, 
+                       const string& response_body) 
+    : response_line(response_line),
+      response_headers(response_headers),
+      response_body(response_body),
+      creation_time(time(nullptr)),
+      requires_revalidation(Cache::requiresRevalidation(response_headers)) {
+    expires_time = Cache::parseExpiresTime(response_headers);
+    etag = Cache::extractETag(response_headers);
+    last_modified = Cache::extractLastModified(response_headers);
+}
+
+bool CacheEntry::isExpired() const {
+    return time(nullptr) > expires_time;
+}
+
+bool CacheEntry::needsRevalidation() const {
+    return requires_revalidation;
+}
+
+string CacheEntry::getFullResponse() const {
+    return response_line + "\r\n" + response_headers + "\r\n" + response_body;
+}
+
+string CacheEntry::getResponseLine() const {
+    return response_line;
+}
+
+string CacheEntry::getResponseHeaders() const {
+    return response_headers;
+}
+
+string CacheEntry::getResponseBody() const {
+    return response_body;
+}
+
+string CacheEntry::getETag() const {
+    return etag;
+}
+
+string CacheEntry::getLastModified() const {
+    return last_modified;
+}
+
+time_t CacheEntry::getExpiresTime() const {
+    return expires_time;
+}
+
+Cache::Cache(size_t max_size) : max_size(max_size), current_size(0) {}
+
+Cache::CacheStatus Cache::checkStatus(const string& url) {
+    lock_guard<mutex> lock(cache_mutex);
+    
+    auto it = cache_map.find(url);
+    if (it == cache_map.end()) {
+        return NOT_IN_CACHE;
+    }
+    
+    const CacheEntry& entry = it->second;
+    
+    if (entry.isExpired()) {
+        return IN_CACHE_EXPIRED;
+    }
+    
+    if (entry.needsRevalidation()) {
+        return IN_CACHE_NEEDS_VALIDATION;
+    }
+    
+    return IN_CACHE_VALID;
+}
+
+void Cache::addToCache(const string& url, 
+                       const string& response_line, 
+                       const string& response_headers, 
+                       const string& response_body) {
+    if (!isCacheable(response_line, response_headers)) {
+        logger.debug("Response not cacheable for URL: " + url);
+        return;
+    }
+    
+    lock_guard<mutex> lock(cache_mutex);
+    
+    // calculate the size of the new entry
+    size_t entry_size = response_line.size() + response_headers.size() + response_body.size();
+    
+    // if the entry is too large, do not cache
+    if (entry_size > max_size) {
+        logger.warning("Response too large to cache: " + url + " (" + to_string(entry_size) + " bytes)");
+        return;
+    }
+    
+    // if the entry already exists, remove the old entry
+    auto it = cache_map.find(url);
+    if (it != cache_map.end()) {
+        current_size -= (it->second.getResponseLine().size() + 
+                        it->second.getResponseHeaders().size() + 
+                        it->second.getResponseBody().size());
+        cache_map.erase(it);
+    }
+    
+    // ensure there is enough space
+    while (current_size + entry_size > max_size && !cache_map.empty()) {
+        evictOldestEntry();
+    }
+    
+    // create and add the new entry
+    CacheEntry entry(response_line, response_headers, response_body);
+    cache_map[url] = entry;
+    current_size += entry_size;
+    
+    // update the expiry time map
+    updateExpiryMap(url, entry.getExpiresTime());
+    
+    logger.debug("Added to cache: " + url + " (expires: " + 
+                string(ctime(&entry.getExpiresTime())) + ")");
+}
+
+CacheEntry* Cache::getEntry(const string& url) {
+    lock_guard<mutex> lock(cache_mutex);
+    
+    auto it = cache_map.find(url);
+    if (it != cache_map.end()) {
+        return &(it->second);
+    }
+    
+    return nullptr;
+}
+
+void Cache::removeEntry(const string& url) {
+    lock_guard<mutex> lock(cache_mutex);
+    
+    auto it = cache_map.find(url);
+    if (it != cache_map.end()) {
+        current_size -= (it->second.getResponseLine().size() + 
+                        it->second.getResponseHeaders().size() + 
+                        it->second.getResponseBody().size());
+        cache_map.erase(it);
+        logger.debug("Removed from cache: " + url);
+    }
+}
+
+size_t Cache::getCurrentSize() const {
+    lock_guard<mutex> lock(cache_mutex);
+    return current_size;
+}
+
+void Cache::evictOldestEntry() {
+    if (cache_map.empty()) {
+        return;
+    }
+    
+    // simple strategy: find the entry with the earliest expiry time
+    time_t oldest_time = time(nullptr) + 3600*24*365; // one year later
+    string oldest_url;
+    
+    for (const auto& pair : cache_map) {
+        if (pair.second.getExpiresTime() < oldest_time) {
+            oldest_time = pair.second.getExpiresTime();
+            oldest_url = pair.first;
+        }
+    }
+    
+    if (!oldest_url.empty()) {
+        logger.info("(no-id): NOTE evicted " + oldest_url + " from cache");
+        removeEntry(oldest_url);
+    }
+}
+
+void Cache::removeExpiredEntries() {
+    lock_guard<mutex> lock(cache_mutex);
+    
+    time_t now = time(nullptr);
+    vector<string> to_remove;
+    
+    for (const auto& pair : cache_map) {
+        if (pair.second.getExpiresTime() <= now) {
+            to_remove.push_back(pair.first);
+        }
+    }
+    
+    for (const auto& url : to_remove) {
+        removeEntry(url);
+    }
+}
+
+void Cache::updateExpiryMap(const string& url, time_t expires_time) {
+    expiry_map[expires_time] = url;
+}
+
+bool Cache::isCacheable(const string& response_line, const string& response_headers) {
+
+    if (response_line.find("200 OK") == string::npos) {
+        return false;
+    }
+    
+    if (response_headers.find("Cache-Control: no-store") != string::npos ||
+        response_headers.find("Cache-Control: private") != string::npos) {
+        return false;
+    }
+    
+    return true;
+}
+
+time_t Cache::parseExpiresTime(const string& response_headers) {
+    time_t now = time(nullptr);
+    time_t expires = now + 3600; // default 1 hour later
+    
+    // try to parse from Cache-Control: max-age
+    regex max_age_regex("Cache-Control:.*?max-age=(\\d+)");
+    smatch max_age_match;
+    if (regex_search(response_headers, max_age_match, max_age_regex)) {
+        int max_age = stoi(max_age_match[1]);
+        expires = now + max_age;
+        return expires;
+    }
+    
+    // try to parse from Expires header
+    regex expires_regex("Expires: (.+)");
+    smatch expires_match;
+    if (regex_search(response_headers, expires_match, expires_regex)) {
+        string expires_str = expires_match[1];
+        
+        // parse HTTP date format
+        struct tm tm = {};
+        strptime(expires_str.c_str(), "%a, %d %b %Y %H:%M:%S GMT", &tm);
+        time_t expires_time = mktime(&tm);
+        
+        // adjust to GMT
+        expires_time -= timezone;
+        
+        if (expires_time > now) {
+            expires = expires_time;
+        }
+    }
+    
+    return expires;
+}
+
+bool Cache::requiresRevalidation(const string& response_headers) {
+    return response_headers.find("Cache-Control: must-revalidate") != string::npos ||
+           response_headers.find("Cache-Control: no-cache") != string::npos;
+}
+
+string Cache::extractETag(const string& response_headers) {
+    regex etag_regex("ETag: \"?([^\"\r\n]+)\"?");
+    smatch etag_match;
+    if (regex_search(response_headers, etag_match, etag_regex)) {
+        return etag_match[1];
+    }
+    return "";
+}
+
+string Cache::extractLastModified(const string& response_headers) {
+    regex last_modified_regex("Last-Modified: (.+)");
+    smatch last_modified_match;
+    if (regex_search(response_headers, last_modified_match, last_modified_regex)) {
+        return last_modified_match[1];
+    }
+    return "";
+}
