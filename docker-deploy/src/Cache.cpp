@@ -71,7 +71,8 @@ void Cache::addToCache(const string& url,
     CacheEntry entry(response_line, response_headers, response_body);
     
     // use insert instead of operator[]
-    cache_map.insert(std::make_pair(url, entry));
+    // cache_map.insert(std::make_pair(url, entry));
+    cache_map.insert_or_assign(url, entry);
 
     // or use emplace
     // cache_map.emplace(url, entry);
@@ -84,6 +85,7 @@ void Cache::addToCache(const string& url,
     time_t expires_time = entry.getExpiresTime();
     logger.debug("Added to cache: " + url + " (expires: " + 
                 string(ctime(&expires_time)) + ")");
+    logger.debug("now cache has "+to_string(cache_map.size())+" entries");
 }
 
 CacheEntry* Cache::getEntry(const string& url) {
@@ -195,7 +197,8 @@ bool Cache::isCacheable(const Response & response) {
 
 time_t Cache::parseExpiresTime(const string& response_headers) {
     time_t now = time(nullptr);
-    time_t expires = now + 3600; // default 1 hour later
+    // time_t expires = now + 3600; // default 1 hour later
+    time_t expires = now + 10; // default 10 seconds later
     
     // try to parse from Cache-Control: max-age
     regex max_age_regex("Cache-Control:.*?max-age=(\\d+)");

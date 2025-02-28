@@ -695,7 +695,7 @@ void Proxy::handle_cache(int client_fd, const Request& request){
         case Cache::CacheStatus::IN_CACHE_VALID:{
             logger.info(request.getId(),"IN_CACHE_VALID");
             // todo check request if can use cache
-            if (request.getHeader("Cache-Control") == "no-cahce"){
+            if (request.getHeader("Cache-Control") == "no-cache"){
                 revalid(client_fd, request);
             }else{
                 returnCache(client_fd, request);
@@ -717,9 +717,122 @@ void Proxy::handle_cache(int client_fd, const Request& request){
 }
 
 void Proxy::revalid(int client_fd, const Request& request){
-    logger.debug(request.getId(),"need revalid");
+    logger.debug(request.getId(),"revalid");
+    Cache & cache = Cache::getInstance();
+    CacheEntry * cacheEntry = cache.getEntry(request.getUrl());
+    string eTag = Cache::extractETag(cacheEntry->getResponseHeaders());
+    if (eTag == ""){// no etag
+        logger.debug(request.getId(),"has no etag, reget");
+        handle_get(client_fd, request);
+    }else{// has etag
+        logger.debug(request.getId(),"has etag: "+eTag+" revalid it");
+        handle_revalid(client_fd,request,eTag);
+    }
 }
 
 void Proxy::returnCache(int client_fd, const Request& request){
-    logger.debug(request.getId(),"can return by cache");
+    logger.debug(request.getId(),"return by cache");
+    Cache & cache = Cache::getInstance();
+    CacheEntry * cacheEntry = cache.getEntry(request.getUrl());
+    send_all(client_fd, cacheEntry->getFullResponse(), request.getId());
+    logger.debug(request.getId(),"done return cache");
+
+}
+
+// bool Peoxy::revalid_eTag(const Request& request, string & eTag){
+//     Response response = handle_request();
+//     if (response.getResult() == 304){
+
+//     }else if(response.getResult() == 200)
+// }
+
+std::string Proxy::build_revalid_request(const Request& request, string & eTag) {
+    std::string url = request.getUrl();
+    size_t pos = url.find("://");
+    std::string path;
+    
+    if (pos != std::string::npos) {
+        size_t path_pos = url.find('/', pos + 3);
+        if (path_pos != std::string::npos) {
+            path = url.substr(path_pos);
+        } else {
+            path = "/";
+        }
+    } else {
+        path = url;
+    }
+    
+    std::string req = "GET " + path + " " + request.getVersion() + "\r\n";
+    req += "Host: " + extract_host(url) + "\r\n";
+    req += "If-None-Match: "+eTag+"\r\n";
+    req += "Accept: */*\r\n";
+    req += "User-Agent: Mozilla/5.0\r\n";
+    req += "\r\n";
+    
+    return req;
+}
+
+
+void Proxy::handle_revalid(int client_fd, const Request& request, string & eTag) {
+    std::string host_with_port = extract_host(request.getUrl());
+    auto [host, server_port] = parse_host_and_port(host_with_port);
+
+    std::string request_get = build_revalid_request(request, eTag);
+    logger.info(request.getId(), "Requesting \"" + request.getMethod() + " " + 
+               request.getUrl() + " " + request.getVersion() + "\" from " + host_with_port);
+
+    try {
+        int server_fd = connect_to_server(host, server_port);
+        
+        // Set receive timeout to 10 seconds (same as test)
+        struct timeval timeout;
+        timeout.tv_sec = 10;
+        timeout.tv_usec = 0;
+        if (setsockopt(server_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) {
+            throw std::runtime_error("Failed to set socket timeout");
+        }
+
+        // Send the request in chunks to handle large requests
+        send_all(server_fd, request_get, request.getId());
+
+        // receive full response from server
+        std::string full_response = receive(server_fd, request.getId());
+
+        Parser parser;
+        Response response = parser.parseResponse(vector<char>(full_response.begin(),full_response.end()));
+
+
+        // if 304, just use cache
+        if (response.getResult() == 304){
+            logger.debug(request.getId(),"304 not modified, just use cache");
+            returnCache(client_fd, request);
+            return;
+        }else if(response.getResult() == 200){// if 200, send response to client
+            logger.debug(request.getId(),"200  modified, use new response");
+            send_all(client_fd, full_response, request.getId());
+        }else {
+            throw std::runtime_error("Empty response from server");
+        }
+        
+        // close it
+        close(server_fd);
+        logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
+
+        // cache it if ok
+        if (Cache::isCacheable(response)){
+            logger.debug(request.getId(), "response cacheable");
+            Cache & cache = Cache::getInstance();
+            CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
+            logger.debug(request.getId(),"try to cache: "+request.getUrl());
+            cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());
+        }else{
+            logger.debug(request.getId(), "not cacheable");
+        }
+    }
+    catch (const std::exception& e) {
+        logger.error(request.getId(), "ERROR in handle_get: " + std::string(e.what()));
+        std::string error_response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
+        send(client_fd, error_response.c_str(), error_response.length(), 0);
+        logger.error(request.getId(), "Responding \"HTTP/1.1 502 Bad Gateway\"");
+    }
 }

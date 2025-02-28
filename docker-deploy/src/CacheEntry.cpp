@@ -23,7 +23,7 @@ return requires_revalidation;
 }
 
 string CacheEntry::getFullResponse() const {
-return response_line + "\r\n" + response_headers + "\r\n" + response_body;
+return response_headers + response_body;
 }
 
 string CacheEntry::getResponseLine() const {
