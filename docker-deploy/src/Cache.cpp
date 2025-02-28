@@ -4,53 +4,10 @@
 #include <regex>
 #include <ctime>
 
-CacheEntry::CacheEntry(const string& response_line, 
-                       const string& response_headers, 
-                       const string& response_body) 
-    : response_line(response_line),
-      response_headers(response_headers),
-      response_body(response_body),
-      creation_time(time(nullptr)),
-      requires_revalidation(Cache::requiresRevalidation(response_headers)) {
-    expires_time = Cache::parseExpiresTime(response_headers);
-    etag = Cache::extractETag(response_headers);
-    last_modified = Cache::extractLastModified(response_headers);
-}
-
-bool CacheEntry::isExpired() const {
-    return time(nullptr) > expires_time;
-}
-
-bool CacheEntry::needsRevalidation() const {
-    return requires_revalidation;
-}
-
-string CacheEntry::getFullResponse() const {
-    return response_line + "\r\n" + response_headers + "\r\n" + response_body;
-}
-
-string CacheEntry::getResponseLine() const {
-    return response_line;
-}
-
-string CacheEntry::getResponseHeaders() const {
-    return response_headers;
-}
-
-string CacheEntry::getResponseBody() const {
-    return response_body;
-}
-
-string CacheEntry::getETag() const {
-    return etag;
-}
-
-string CacheEntry::getLastModified() const {
-    return last_modified;
-}
-
-time_t CacheEntry::getExpiresTime() const {
-    return expires_time;
+// singleton get instance
+Cache & Cache::getInstance() {
+    static Cache instance;
+    return instance;
 }
 
 Cache::Cache(size_t max_size) : max_size(max_size), current_size(0) {}
@@ -203,12 +160,33 @@ void Cache::updateExpiryMap(const string& url, time_t expires_time) {
 
 bool Cache::isCacheable(const string& response_line, const string& response_headers) {
 
-    if (response_line.find("200 OK") == string::npos) {
+    if (response_line.find("200") == string::npos) {
         return false;
     }
     
     if (response_headers.find("Cache-Control: no-store") != string::npos ||
         response_headers.find("Cache-Control: private") != string::npos) {
+        return false;
+    }
+    
+    return true;
+}
+
+bool Cache::isCacheable(const Response & response) {
+
+    if (response.getResult() != 200) {
+        logger.debug("not 200");
+        return false;
+    }
+
+    if (response.getHeader("Cache-Control") == ""){
+        logger.debug("has no cache control in response");
+        return true;
+    }
+    
+    if (response.getHeader("Cache-Control") != "no-store" ||
+        response.getHeader("Cache-Control") != "private") {
+        logger.debug("cache not allowed");
         return false;
     }
     

@@ -9,6 +9,7 @@
 #include <ctime>
 #include <thread>
 #include <chrono>
+#include "Cache.hpp"
 
 namespace beast = boost::beast;
 namespace http = boost::beast::http;
@@ -156,7 +157,8 @@ void Proxy::handle_client(int client_fd) {
                " " + request.getVersion() + "\" from " + client_ip + " @ " + 
                logger.getCurrentTime());
     if (request.getMethod() == "GET") {
-        handle_get(client_fd, request);
+        handle_cache(client_fd, request);
+        // handle_get(client_fd, request);
     }
     else if (request.getMethod() == "POST") {
         handle_post(client_fd, request);
@@ -230,7 +232,7 @@ void Proxy::handle_get(int client_fd, const Request& request) {
 
     try {
         int server_fd = connect_to_server(host, server_port);
-
+        
         // Set receive timeout to 10 seconds (same as test)
         struct timeval timeout;
         timeout.tv_sec = 10;
@@ -245,6 +247,9 @@ void Proxy::handle_get(int client_fd, const Request& request) {
         // receive full response from server
         std::string full_response = receive(server_fd, request.getId());
 
+        Parser parser;
+        Response response = parser.parseResponse(vector<char>(full_response.begin(),full_response.end()));
+        
         // if ok, send response to client
         if (!full_response.empty()) {
             logger.info(request.getId(), "From " + host);
@@ -256,6 +261,17 @@ void Proxy::handle_get(int client_fd, const Request& request) {
         // close it
         close(server_fd);
         logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
+
+        // cache it if ok
+        if (Cache::isCacheable(response)){
+            logger.debug(request.getId(), "response cacheable");
+            Cache & cache = Cache::getInstance();
+            CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
+            logger.debug(request.getId(),"try to cache: "+request.getUrl());
+            cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());
+        }else{
+            logger.debug(request.getId(), "not cacheable");
+        }
     }
     catch (const std::exception& e) {
         logger.error(request.getId(), "ERROR in handle_get: " + std::string(e.what()));
@@ -663,4 +679,47 @@ void Proxy::send_all(int client_fd, std::string full_response, int id){
     } else {
         throw std::runtime_error("Invalid response format");
     }
+}
+
+void Proxy::handle_cache(int client_fd, const Request& request){
+    Cache & cache = Cache::getInstance();
+    
+    Cache::CacheStatus status = cache.checkStatus(request.getUrl());
+
+    switch(status){
+        case Cache::CacheStatus::NOT_IN_CACHE:{
+            logger.info(request.getId(),"NOT_IN_CACHE");
+            handle_get(client_fd, request);
+            break;
+        }
+        case Cache::CacheStatus::IN_CACHE_VALID:{
+            logger.info(request.getId(),"IN_CACHE_VALID");
+            // todo check request if can use cache
+            if (request.getHeader("Cache-Control") == "no-cahce"){
+                revalid(client_fd, request);
+            }else{
+                returnCache(client_fd, request);
+            }
+            break;
+        }
+        case Cache::CacheStatus::IN_CACHE_EXPIRED:{
+            logger.info(request.getId(),"IN_CACHE_EXPIRED");
+            handle_get(client_fd, request);
+            break;
+        }
+        case Cache::CacheStatus::IN_CACHE_NEEDS_VALIDATION:{
+            logger.info(request.getId(),"IN_CACHE_NEEDS_VALIDATION");
+            revalid(client_fd, request);
+            break;
+        }
+    }
+
+}
+
+void Proxy::revalid(int client_fd, const Request& request){
+    logger.debug(request.getId(),"need revalid");
+}
+
+void Proxy::returnCache(int client_fd, const Request& request){
+    logger.debug(request.getId(),"can return by cache");
 }

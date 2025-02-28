@@ -5,6 +5,7 @@
 #include <boost/beast.hpp>
 #include "Logger.hpp"
 #include "Request.hpp"
+#include "Response.hpp"
 
 namespace beast = boost::beast;
 namespace http = boost::beast::http;
@@ -14,6 +15,7 @@ class Parser{
     public:
     
         Request parseRequest(const std::vector<char> & data);
+        Response parseResponse(const std::vector<char> & data);
 
     private:
 
