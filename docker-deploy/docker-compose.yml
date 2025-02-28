@@ -3,11 +3,12 @@ version: '3'
 services:
   proxy:
     build:
-      context: ./src
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./src/Dockerfile
     ports:
       - "12345:12345"
     volumes:
       - ./logs:/var/log/erss
+      - ./build:/app/build
     environment:
       - TZ=America/New_York

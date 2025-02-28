@@ -78,8 +78,18 @@ private:
 
     // send full data to fd
     void send_all(int client_fd, std::string full_response, int id);
+
+    void handle_cache(int client_fd, const Request& request);
+
+    void revalid(int client_fd, const Request& request);
+
+    void returnCache(int client_fd, const Request& request);
+
+    std::string build_revalid_request(const Request& request, string & eTag);
+
+    void handle_revalid(int client_fd, const Request& request, string & eTag);
     
-    int server_fd;
+    int listen_fd;
     int port;
     Logger& logger;
     bool running;
