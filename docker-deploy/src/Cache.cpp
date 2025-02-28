@@ -237,7 +237,7 @@ bool Cache::requiresRevalidation(const string& response_headers) {
 }
 
 string Cache::extractETag(const string& response_headers) {
-    regex etag_regex("ETag: \"?([^\"\r\n]+)\"?");
+    regex etag_regex("ETag: \"?([^\"\r\n]+)\"?", std::regex_constants::icase);
     smatch etag_match;
     if (regex_search(response_headers, etag_match, etag_regex)) {
         return etag_match[1];
