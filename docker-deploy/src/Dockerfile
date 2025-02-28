@@ -8,16 +8,17 @@ RUN apt-get update && \
     libboost-dev
 
 WORKDIR /app
-COPY . /app/
+COPY ./src /app/src
 
-RUN mkdir build && \
-    cd build && \
-    cmake .. && \
-    make
+# RUN mkdir build && \
+#     cd build && \
+#     cmake .. && \
+#     make
 
 RUN mkdir -p /var/log/erss && \
     chmod 777 /var/log/erss
 
 EXPOSE 12345
 
-CMD ["./build/proxy"]
+# CMD ["./build/proxy"]
+CMD ["/bin/bash", "-c", "mkdir -p /app/build && cd /app/build && cmake ../src && make && ./proxy"]

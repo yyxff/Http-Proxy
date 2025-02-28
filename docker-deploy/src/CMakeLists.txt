@@ -8,21 +8,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(proxy_lib
     Proxy.cpp
     Request.cpp
+    Response.cpp
     Logger.cpp
     Parser.cpp
+    Cache.cpp
+    CacheEntry.cpp
 )
 
 # Add main executable
 add_executable(proxy 
     main.cpp
-    Proxy.cpp
-    Cache.cpp
-    Request.cpp
-    Logger.cpp
-    Parser.cpp
 )
 
-target_link_libraries(proxy pthread)
+target_link_libraries(proxy PRIVATE proxy_lib pthread)
 target_include_directories(proxy_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(proxy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
