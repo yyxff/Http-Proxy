@@ -16,7 +16,7 @@ namespace http = boost::beast::http;
 namespace asio = boost::asio;
 
 Proxy::Proxy(int port) : 
-    server_fd(-1), 
+    listen_fd(-1), 
     port(port), 
     logger(Logger::getInstance()),
     running(false),
@@ -28,9 +28,9 @@ Proxy::~Proxy() {
             thread.join();
         }
     }
-    if (server_fd >= 0) {
-        close(server_fd);
-        logger.debug("closed server fd: "+to_string(server_fd));
+    if (listen_fd >= 0) {
+        close(listen_fd);
+        logger.debug("closed server fd: "+to_string(listen_fd));
     }
 }
 
@@ -42,13 +42,13 @@ void Proxy::run() {
 // Setup server socket with proper configurations
 void Proxy::setup_server() {
     logger.info("setting up server...");
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) {
+    listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (listen_fd < 0) {
         throw std::runtime_error("Failed to create socket");
     }
 
     int opt = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+    if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
         throw std::runtime_error("Failed to set socket options");
     }
 
@@ -57,20 +57,20 @@ void Proxy::setup_server() {
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port);  // if port=0, the system will assign a available port
 
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+    if (bind(listen_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         throw std::runtime_error("Failed to bind to port " + std::to_string(port));
     }
 
     // get the actual port
     if (port == 0) {
         socklen_t addrlen = sizeof(address);
-        if (getsockname(server_fd, (struct sockaddr *)&address, &addrlen) == -1) {
+        if (getsockname(listen_fd, (struct sockaddr *)&address, &addrlen) == -1) {
             throw std::runtime_error("Failed to get socket port");
         }
         port = ntohs(address.sin_port);
     }
 
-    if (listen(server_fd, 10) < 0) {
+    if (listen(listen_fd, 10) < 0) {
         throw std::runtime_error("Failed to listen");
     }
     running = true;
@@ -86,9 +86,9 @@ void Proxy::start_accepting() {
         struct timeval tv;
         tv.tv_sec = 1;  // 1 second timeout
         tv.tv_usec = 0;
-        setsockopt(server_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+        setsockopt(listen_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
         
-        int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+        int client_fd = accept(listen_fd, (struct sockaddr *)&client_addr, &client_len);
         logger.debug("build a new client fd "+to_string(client_fd));
         
         if (!running) break;
@@ -229,9 +229,9 @@ void Proxy::handle_get(int client_fd, const Request& request) {
     std::string request_get = build_get_request(request);
     logger.info(request.getId(), "Requesting \"" + request.getMethod() + " " + 
                request.getUrl() + " " + request.getVersion() + "\" from " + host_with_port);
-
+    int server_fd = -1;
     try {
-        int server_fd = connect_to_server(host, server_port);
+        server_fd = connect_to_server(host, server_port);
         
         // Set receive timeout to 10 seconds (same as test)
         struct timeval timeout;
@@ -258,9 +258,6 @@ void Proxy::handle_get(int client_fd, const Request& request) {
             throw std::runtime_error("Empty response from server");
         }
 
-        // close it
-        close(server_fd);
-        logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
 
         // cache it if ok
         if (Cache::isCacheable(response)){
@@ -279,6 +276,9 @@ void Proxy::handle_get(int client_fd, const Request& request) {
         send(client_fd, error_response.c_str(), error_response.length(), 0);
         logger.error(request.getId(), "Responding \"HTTP/1.1 502 Bad Gateway\"");
     }
+    // close it
+    close(server_fd);
+    logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
 }
 
 std::string Proxy::build_post_request(const Request& request) {
@@ -348,9 +348,9 @@ void Proxy::handle_post(int client_fd, const Request& request) {
     // build post request
     std::string request_post = build_post_request(request);
     logger.debug(request.getId(), "Sending request:\n" + request_post);
-    
+    int server_fd = -1;
     try {
-        int server_fd = connect_to_server(host_name, server_port);
+        server_fd = connect_to_server(host_name, server_port);
         logger.info(request.getId(), "Successfully connected to server " + host_name + ":" + std::to_string(server_port));
         
         // Set receive timeout to 10 seconds (same as test)
@@ -375,9 +375,6 @@ void Proxy::handle_post(int client_fd, const Request& request) {
             throw std::runtime_error("Empty response from server");
         }
         
-        // close it
-        close(server_fd);
-        logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
     }
     catch (const std::exception& e) {
         logger.error(request.getId(), "ERROR in handle_post: " + std::string(e.what()));
@@ -385,6 +382,9 @@ void Proxy::handle_post(int client_fd, const Request& request) {
         send(client_fd, error_response.c_str(), error_response.length(), 0);
         logger.error(request.getId(), "Responding \"HTTP/1.1 502 Bad Gateway\"");
     }
+    // close it
+    close(server_fd);
+    logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
 }
 
 int Proxy::connect_to_server(const std::string& host, int port) {
@@ -445,10 +445,10 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
 
     // Log the CONNECT request
     logger.info(request.getId(), "Requesting \"CONNECT " + url + " " + request.getVersion() + "\" from " + host);
-
+    int server_fd = -1;
     try {
         // Connect to the destination server
-        int server_fd = connect_to_server(host, port);
+        server_fd = connect_to_server(host, port);
         logger.info(request.getId(), "Successfully connected to destination server " + host + ":" + std::to_string(port)+" on fd "+to_string(server_fd));
 
         // Send 200 OK to client
@@ -536,10 +536,10 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
             logger.error(request.getId(), "ERROR in tunnel thread: " + std::string(e.what()));
         }
 
-        close(server_fd);
-        logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
-        close(client_fd);
-        logger.debug(request.getId(),"handle connect1 closed client fd: "+to_string(client_fd));
+        // close(server_fd);
+        // logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
+        // close(client_fd);
+        // logger.debug(request.getId(),"handle connect1 closed client fd: "+to_string(client_fd));
         
     }
     catch (const std::exception& e) {
@@ -547,9 +547,10 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
         std::string error_response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
         send(client_fd, error_response.c_str(), error_response.length(), 0);
         logger.error(request.getId(), "Responding \"HTTP/1.1 502 Bad Gateway\"");
-        close(client_fd);
-        logger.debug(request.getId(),"handle connect2 closed client fd: "+to_string(client_fd));
     }
+    // close it
+    close(server_fd);
+    logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
 }
 
 void Proxy::stop() {
@@ -560,11 +561,11 @@ void Proxy::stop() {
     shutdown_requested = true;
 
     // Close server socket to interrupt accept
-    if (server_fd >= 0) {
-        shutdown(server_fd, SHUT_RDWR);
-        close(server_fd);
-        logger.debug("closed server fd: "+to_string(server_fd));
-        server_fd = -1;
+    if (listen_fd >= 0) {
+        shutdown(listen_fd, SHUT_RDWR);
+        close(listen_fd);
+        logger.debug("closed listen fd: "+to_string(listen_fd));
+        listen_fd = -1;
     }
 
     // Wait for all client threads with timeout

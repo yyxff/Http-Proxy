@@ -89,7 +89,7 @@ private:
 
     void handle_revalid(int client_fd, const Request& request, string & eTag);
     
-    int server_fd;
+    int listen_fd;
     int port;
     Logger& logger;
     bool running;
