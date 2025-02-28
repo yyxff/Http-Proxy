@@ -198,7 +198,7 @@ bool Cache::isCacheable(const Response & response) {
 time_t Cache::parseExpiresTime(const string& response_headers) {
     time_t now = time(nullptr);
     // time_t expires = now + 3600; // default 1 hour later
-    time_t expires = now + 10; // default 10 seconds later
+    time_t expires = now + 20; // default 10 seconds later
     
     // try to parse from Cache-Control: max-age
     regex max_age_regex("Cache-Control:.*?max-age=(\\d+)");
