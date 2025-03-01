@@ -19,7 +19,7 @@ def home():
 # test1: valid cache
 @app.route('/valid-cache')
 def cache():
-    disabled_paths.add('/valid_cache')
+    disabled_paths.add('/valid-cache')
     return f"hello! I'm valid_cache!"
 
 
@@ -27,7 +27,7 @@ def cache():
 myEtag = "v1"
 visited_time = 0
 @app.route('/revalid-cache')
-def cache():
+def revalid_cache():
     visited_time += 1
     if visited_time > 2:
         myEtag = "v2"
