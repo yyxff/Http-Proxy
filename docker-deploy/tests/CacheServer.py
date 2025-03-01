@@ -28,6 +28,7 @@ myEtag = "v1"
 visited_time = 0
 @app.route('/revalid-cache')
 def revalid_cache():
+    global visited_time, myEtag
     visited_time += 1
     if visited_time > 2:
         myEtag = "v2"
