@@ -377,6 +377,149 @@ TEST_F(ProxyTest, TestChunkedTransferEncoding) {
     std::cout << "=== Completed TestChunkedTransferEncoding ===" << std::endl;
 }
 
+// ============== Test #5: Max-Age=0 Cache Control ==============
+TEST_F(ProxyTest, TestMaxAgeZero) {
+    std::cout << "\n=== Starting TestMaxAgeZero ===" << std::endl;
+    
+    try {
+        // First request to get the resource
+        int client_sock = create_client_socket();
+        std::string get_request = 
+            "GET http://www.artsci.utoronto.ca/futurestudents HTTP/1.1\r\n"
+            "Host: www.artsci.utoronto.ca\r\n"
+            "Connection: close\r\n\r\n";
+        
+        ssize_t sent = send(client_sock, get_request.c_str(), get_request.size(), 0);
+        EXPECT_EQ(sent, static_cast<ssize_t>(get_request.size())) << "First GET request not fully sent.";
+
+        // Set receive timeout
+        struct timeval tv;
+        tv.tv_sec = 10;  // Longer timeout for potentially large response
+        tv.tv_usec = 0;
+        setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
+        // Read first response
+        std::string first_response;
+        char buffer[8192];  // Larger buffer for potentially large response
+        
+        while (true) {
+            ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+            if (received <= 0) break;
+            
+            buffer[received] = '\0';
+            first_response.append(buffer, received);
+        }
+
+        // Output first response headers for debugging
+        size_t header_end = first_response.find("\r\n\r\n");
+        if (header_end != std::string::npos) {
+            std::cout << "First response headers:\n" << first_response.substr(0, header_end + 4) << std::endl;
+        } else {
+            std::cout << "Could not find end of headers in first response" << std::endl;
+        }
+
+        // Check if first response is valid (301 Moved Permanently is expected for this URL)
+        EXPECT_TRUE(first_response.find("HTTP/1.1 301") != std::string::npos) 
+            << "First response status is not 301 Moved Permanently";
+        
+        // Check if the Location header is present (for redirection to HTTPS)
+        EXPECT_TRUE(first_response.find("Location: https://") != std::string::npos)
+            << "First response does not contain HTTPS redirection";
+        
+        close(client_sock);
+        
+        // Wait a moment to ensure the response is cached
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        
+        // Second request with Cache-Control: max-age=0 header
+        std::cout << "Sending second request with max-age=0..." << std::endl;
+        client_sock = create_client_socket();
+        
+        std::string second_get_request = 
+            "GET http://www.artsci.utoronto.ca/futurestudents HTTP/1.1\r\n"
+            "Host: www.artsci.utoronto.ca\r\n"
+            "Cache-Control: max-age=0\r\n"  // Add max-age=0 directive
+            "Connection: close\r\n\r\n";
+        
+        sent = send(client_sock, second_get_request.c_str(), second_get_request.size(), 0);
+        EXPECT_EQ(sent, static_cast<ssize_t>(second_get_request.size())) << "Second GET request not fully sent.";
+        
+        // Read second response
+        std::string second_response;
+        while (true) {
+            ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+            if (received <= 0) break;
+            
+            buffer[received] = '\0';
+            second_response.append(buffer, received);
+        }
+        
+        // Output second response headers for debugging
+        header_end = second_response.find("\r\n\r\n");
+        if (header_end != std::string::npos) {
+            std::cout << "Second response headers:\n" << second_response.substr(0, header_end + 4) << std::endl;
+        } else {
+            std::cout << "Could not find end of headers in second response" << std::endl;
+        }
+        
+        close(client_sock);
+        
+        // Check if second response is also 301 Moved Permanently
+        EXPECT_TRUE(second_response.find("HTTP/1.1 301") != std::string::npos) 
+            << "Second response status is not 301 Moved Permanently";
+        
+        // Check if the Location header is present in the second response
+        EXPECT_TRUE(second_response.find("Location: https://") != std::string::npos)
+            << "Second response does not contain HTTPS redirection";
+        
+        // Check if the responses are different (indicating a fresh fetch)
+        // or if they have the same content but with updated headers
+        // This is a bit tricky as the content might legitimately change
+        // So we'll just check that both responses are valid
+        EXPECT_FALSE(second_response.empty()) 
+            << "Second response is empty";
+            
+        // Check that the second response has a different Date header
+        // Extract Date headers from both responses
+        std::string first_date, second_date;
+        size_t date_pos = first_response.find("Date: ");
+        if (date_pos != std::string::npos) {
+            size_t date_end = first_response.find("\r\n", date_pos);
+            if (date_end != std::string::npos) {
+                first_date = first_response.substr(date_pos, date_end - date_pos);
+            }
+        }
+        
+        date_pos = second_response.find("Date: ");
+        if (date_pos != std::string::npos) {
+            size_t date_end = second_response.find("\r\n", date_pos);
+            if (date_end != std::string::npos) {
+                second_date = second_response.substr(date_pos, date_end - date_pos);
+            }
+        }
+        
+        std::cout << "First response date: " << first_date << std::endl;
+        std::cout << "Second response date: " << second_date << std::endl;
+        
+        // With max-age=0, we expect the proxy to revalidate with the server
+        // which should result in a new Date header
+        EXPECT_FALSE(first_date.empty() && second_date.empty()) 
+            << "Could not find Date headers in responses";
+            
+        if (!first_date.empty() && !second_date.empty()) {
+            // If both dates are present, they should be different if revalidation occurred
+            bool dates_different = (first_date != second_date);
+            EXPECT_TRUE(dates_different) 
+                << "Date headers are identical, suggesting no revalidation occurred";
+        }
+    }
+    catch (const std::exception &e) {
+        FAIL() << "Exception in TestMaxAgeZero: " << e.what();
+    }
+    
+    std::cout << "=== Completed TestMaxAgeZero ===" << std::endl;
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
