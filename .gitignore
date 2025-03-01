@@ -54,3 +54,4 @@ Thumbs.db
 # Project specific
 logs/
 proxy.log
+docker-deploy/tests/test_logs/

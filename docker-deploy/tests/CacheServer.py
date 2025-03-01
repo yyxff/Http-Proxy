@@ -52,6 +52,14 @@ def revalid_cache():
 
     return response
 
+# test3 max-age cache
+@app.route('/cache/max-age')
+def max_age_cache():
+    response = make_response("hello! I'm max_age_cache!")
+    response.headers['Cache-Control'] = 'public, max-age=0'
+
+    return response
+
 
 # start server
 if __name__ == '__main__':

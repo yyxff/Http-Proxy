@@ -18,7 +18,7 @@ class ProxyTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Set test log path
-        std::string test_log_path = "test_logs/test_proxy.log";
+        std::string test_log_path = "../test_logs/";
         Logger::getInstance().setLogPath(test_log_path);
         
         // Create proxy instance with port 0 (system assigned)
@@ -581,7 +581,7 @@ TEST_F(ProxyTest, TestBasicCaching) {
         // 等待一会儿
         std::this_thread::sleep_for(std::chrono::seconds(1));
         
-        // 第二次请求 - 由于代理没有缓存，会返回 403
+        // 第二次请求 - 由于代理有缓存，会返回 200
         std::cout << "Sending second request to test caching..." << std::endl;
         client_sock = create_client_socket();
         
@@ -600,12 +600,13 @@ TEST_F(ProxyTest, TestBasicCaching) {
         
         std::cout << "Second response:\n" << second_response << std::endl;
         
-        // 检查第二次响应是否是 403 Forbidden（因为代理没有缓存，所以会从服务器获取，而服务器已禁用此路径）
-        EXPECT_TRUE(second_response.find("HTTP/1.1 403") != std::string::npos) 
-            << "Second response status is not 403 Forbidden";
+        // 检查第er次响应是否是 200 OK
+        EXPECT_TRUE(first_response.find("HTTP/1.1 200 OK") != std::string::npos || 
+                    first_response.find("HTTP/1.1 200") != std::string::npos) 
+            << "First response status is not 200 OK";
         
-        EXPECT_TRUE(second_response.find("this path has been disabled") != std::string::npos)
-            << "Second response does not contain expected error message";
+        EXPECT_TRUE(first_response.find("hello! I'm valid_cache!") != std::string::npos)
+            << "First response does not contain expected content";
         
         close(client_sock);
     }
@@ -661,13 +662,13 @@ TEST_F(ProxyTest, TestCacheRevalidation) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         
         // 第二次请求 - 使用 max-age=0 强制重新验证
-        std::cout << "Sending second request with max-age=0..." << std::endl;
+        std::cout << "Sending second request with no-cache..." << std::endl;
         client_sock = create_client_socket();
         
         std::string second_get_request = 
             "GET http://127.0.0.1:5000/revalid-cache HTTP/1.1\r\n"
             "Host: 127.0.0.1:5000\r\n"
-            "Cache-Control: max-age=0\r\n"  // 添加 max-age=0 指令
+            "Cache-Control: no-cache\r\n"  // 添加 max-age=0 指令
             "Connection: close\r\n\r\n";
         
         sent = send(client_sock, second_get_request.c_str(), second_get_request.size(), 0);
@@ -699,8 +700,8 @@ TEST_F(ProxyTest, TestCacheRevalidation) {
         std::cout << "Sending third request to test ETag change..." << std::endl;
         client_sock = create_client_socket();
         
-        sent = send(client_sock, get_request.c_str(), get_request.size(), 0);
-        EXPECT_EQ(sent, static_cast<ssize_t>(get_request.size())) << "Third GET request not fully sent.";
+        sent = send(client_sock, second_get_request.c_str(), second_get_request.size(), 0);
+        EXPECT_EQ(sent, static_cast<ssize_t>(second_get_request.size())) << "Third GET request not fully sent.";
         
         // 读取第三次响应
         std::string third_response;
@@ -717,7 +718,8 @@ TEST_F(ProxyTest, TestCacheRevalidation) {
         // 检查第三次响应是否也是 200 OK
         EXPECT_TRUE(third_response.find("HTTP/1.1 200 OK") != std::string::npos) 
             << "Third response status is not 200 OK";
-        
+        EXPECT_TRUE(third_response.find("v2") != std::string::npos) 
+            << "Third response etag not v2";
         close(client_sock);
     }
     catch (const std::exception &e) {

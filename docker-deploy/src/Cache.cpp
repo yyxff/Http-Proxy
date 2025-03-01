@@ -186,8 +186,8 @@ bool Cache::isCacheable(const Response & response) {
         return true;
     }
     
-    if (response.getHeader("Cache-Control") != "no-store" ||
-        response.getHeader("Cache-Control") != "private") {
+    if (response.getHeader("Cache-Control").find("no-store") != std::string::npos||
+        response.getHeader("Cache-Control").find("private") != std::string::npos) {
         logger.debug("cache not allowed");
         return false;
     }

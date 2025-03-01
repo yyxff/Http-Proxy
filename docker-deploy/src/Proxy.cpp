@@ -696,7 +696,7 @@ void Proxy::handle_cache(int client_fd, const Request& request){
         case Cache::CacheStatus::IN_CACHE_VALID:{
             logger.info(request.getId(),"IN_CACHE_VALID");
             // todo check request if can use cache
-            if (request.getHeader("Cache-Control") == "no-cache"){
+            if (request.getHeader("Cache-Control").find("no-cache") != string::npos){
                 revalid(client_fd, request);
             }else{
                 returnCache(client_fd, request);
