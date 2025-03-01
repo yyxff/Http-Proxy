@@ -4,6 +4,13 @@ from flask import Flask, request, jsonify, Response, make_response
 app = Flask(__name__)
 disabled_paths = set()
 
+# 添加重置功能
+@app.route('/reset')
+def reset():
+    global disabled_paths
+    disabled_paths.clear()
+    return "Server state reset"
+
 # enroll before request hook
 @app.before_request
 def check_disabled_routes():
@@ -13,14 +20,19 @@ def check_disabled_routes():
 # root
 @app.route('/')
 def home():
+    global disabled_paths
+    disabled_paths.clear()  # 访问根路径时重置状态
     return "welcome to simple test server!"
 
 
 # test1: valid cache
 @app.route('/valid-cache')
 def cache():
+    response = make_response("hello! I'm valid_cache!")
+    response.headers['Cache-Control'] = 'max-age=60'  # 设置缓存时间为60秒
+    # 第一次访问后禁用此路径
     disabled_paths.add('/valid-cache')
-    return f"hello! I'm valid_cache!"
+    return response
 
 
 # test2: revalid cache
