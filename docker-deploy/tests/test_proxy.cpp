@@ -1017,6 +1017,72 @@ TEST_F(ProxyTest, Test500ServerError) {
     std::cout << "=== Completed Test500ServerError ===" << std::endl;
 }
 
+TEST_F(ProxyTest, TestConcurrentRequests) {
+    std::cout << "\n=== Starting TestConcurrentRequests ===" << std::endl;
+    
+    try {
+        const int NUM_REQUESTS = 10;
+        std::vector<std::thread> threads;
+        std::atomic<int> success_count(0);
+        
+        // start multiple threads to send requests concurrently
+        for (int i = 0; i < NUM_REQUESTS; i++) {
+            threads.emplace_back([this, &success_count]() {
+                int client_sock = create_client_socket();
+                std::string get_request = 
+                    "GET http://httpbin.org/get HTTP/1.1\r\n"
+                    "Host: httpbin.org\r\n"
+                    "Connection: close\r\n\r\n";
+                
+                ssize_t sent = send(client_sock, get_request.c_str(), get_request.size(), 0);
+                if (sent != static_cast<ssize_t>(get_request.size())) {
+                    return;
+                }
+                
+                // set receive timeout
+                struct timeval tv;
+                tv.tv_sec = 5;
+                tv.tv_usec = 0;
+                setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+                
+                // read response
+                char buffer[4096];
+                std::string response;
+                
+                while (true) {
+                    ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+                    if (received <= 0) break;
+                    
+                    buffer[received] = '\0';
+                    response.append(buffer, received);
+                }
+                
+                close(client_sock);
+                
+                // check if response is successful
+                if (!response.empty() && response.find("HTTP/1.1 200") != std::string::npos) {
+                    success_count++;
+                }
+            });
+        }
+        
+        // wait for all threads to complete
+        for (auto& t : threads) {
+            t.join();
+        }
+        
+        std::cout << "Concurrent requests completed: " << success_count << "/" << NUM_REQUESTS << std::endl;
+        
+        // verify most requests succeeded
+        EXPECT_GE(success_count, NUM_REQUESTS * 0.8) << "Less than 80% of concurrent requests succeeded";
+    }
+    catch (const std::exception &e) {
+        FAIL() << "Exception in TestConcurrentRequests: " << e.what();
+    }
+    
+    std::cout << "=== Completed TestConcurrentRequests ===" << std::endl;
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
