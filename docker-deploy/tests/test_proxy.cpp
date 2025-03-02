@@ -970,6 +970,53 @@ TEST_F(ProxyTest, Test404NotFound) {
     std::cout << "=== Completed Test404NotFound ===" << std::endl;
 }
 
+TEST_F(ProxyTest, Test500ServerError) {
+    std::cout << "\n=== Starting Test500ServerError ===" << std::endl;
+    
+    try {
+        int client_sock = create_client_socket();
+        std::string server_error_request = 
+            "GET http://httpbin.org/status/500 HTTP/1.1\r\n"
+            "Host: httpbin.org\r\n"
+            "Connection: close\r\n\r\n";
+        
+        ssize_t sent = send(client_sock, server_error_request.c_str(), server_error_request.size(), 0);
+        EXPECT_EQ(sent, static_cast<ssize_t>(server_error_request.size())) << "500 request not fully sent.";
+
+        // set receive timeout
+        struct timeval tv;
+        tv.tv_sec = 5;
+        tv.tv_usec = 0;
+        setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
+        // read response
+        char buffer[4096];
+        std::string server_error_response;
+        
+        while (true) {
+            ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+            if (received <= 0) break;
+            
+            buffer[received] = '\0';
+            server_error_response.append(buffer, received);
+        }
+        
+        std::cout << "500 response:\n" << server_error_response << std::endl;
+        
+        // verify proxy correctly passed 500 response
+        EXPECT_FALSE(server_error_response.empty()) << "No response received for 500 request";
+        EXPECT_TRUE(server_error_response.find("HTTP/1.1 500") != std::string::npos) 
+            << "Expected 500 Internal Server Error response";
+        
+        close(client_sock);
+    }
+    catch (const std::exception &e) {
+        FAIL() << "Exception in Test500ServerError: " << e.what();
+    }
+    
+    std::cout << "=== Completed Test500ServerError ===" << std::endl;
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
