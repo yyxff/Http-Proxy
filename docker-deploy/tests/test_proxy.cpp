@@ -781,6 +781,59 @@ TEST_F(ProxyTest, TestInvalidDomain) {
     std::cout << "=== Completed TestInvalidDomain ===" << std::endl;
 }
 
+TEST_F(ProxyTest, TestConnectionTimeout) {
+    std::cout << "\n=== Starting TestConnectionTimeout ===" << std::endl;
+    
+    try {
+        int client_sock = create_client_socket();
+        std::string timeout_request = 
+            "GET http://example.com:8181/ HTTP/1.1\r\n"  // use unlikely open port
+            "Host: example.com:8181\r\n"
+            "Connection: close\r\n\r\n";
+        
+        ssize_t sent = send(client_sock, timeout_request.c_str(), timeout_request.size(), 0);
+        EXPECT_EQ(sent, static_cast<ssize_t>(timeout_request.size())) << "Timeout request not fully sent.";
+
+        // set longer receive timeout, as proxy may wait for a while
+        struct timeval tv;
+        tv.tv_sec = 20;
+        tv.tv_usec = 0;
+        setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
+        // read response
+        char buffer[4096];
+        std::string timeout_response;
+        
+        while (true) {
+            ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+            if (received <= 0) break;
+            
+            buffer[received] = '\0';
+            timeout_response.append(buffer, received);
+        }
+        
+        std::cout << "Timeout response:\n" << timeout_response << std::endl;
+        
+        // verify proxy returned timeout error response
+        EXPECT_FALSE(timeout_response.empty()) << "No response received for connection timeout";
+        EXPECT_TRUE(
+            timeout_response.find("HTTP/1.1 504") != std::string::npos || // Gateway Timeout
+            timeout_response.find("HTTP/1.1 502") != std::string::npos || // Bad Gateway
+            timeout_response.find("HTTP/1.1 500") != std::string::npos || // Internal Server Error
+            timeout_response.find("timeout") != std::string::npos ||
+            timeout_response.find("Timeout") != std::string::npos ||
+            timeout_response.find("Error") != std::string::npos
+        ) << "Expected timeout error response";
+        
+        close(client_sock);
+    }
+    catch (const std::exception &e) {
+        FAIL() << "Exception in TestConnectionTimeout: " << e.what();
+    }
+    
+    std::cout << "=== Completed TestConnectionTimeout ===" << std::endl;
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
