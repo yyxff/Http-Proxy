@@ -525,7 +525,7 @@ TEST_F(ProxyTest, TestBasicCaching) {
     std::cout << "\n=== Starting TestBasicCaching ===" << std::endl;
     
     try {
-        // 重置 CacheServer 状态 - 先访问根路径
+        // reset CacheServer state - first visit root path
         int reset_sock = create_client_socket();
         std::string reset_request = 
             "GET http://127.0.0.1:5000/ HTTP/1.1\r\n"
@@ -534,12 +534,12 @@ TEST_F(ProxyTest, TestBasicCaching) {
         
         send(reset_sock, reset_request.c_str(), reset_request.size(), 0);
         
-        // 读取响应但不需要验证
+        // read response but do not verify
         char buffer[4096];
         while (recv(reset_sock, buffer, sizeof(buffer) - 1, 0) > 0) {}
         close(reset_sock);
         
-        // 第一次请求 - 应该从服务器获取
+        // first request - should get from server
         int client_sock = create_client_socket();
         std::string get_request = 
             "GET http://127.0.0.1:5000/valid-cache HTTP/1.1\r\n"
@@ -549,13 +549,13 @@ TEST_F(ProxyTest, TestBasicCaching) {
         ssize_t sent = send(client_sock, get_request.c_str(), get_request.size(), 0);
         EXPECT_EQ(sent, static_cast<ssize_t>(get_request.size())) << "First GET request not fully sent.";
 
-        // 设置接收超时
+        // set receive timeout
         struct timeval tv;
         tv.tv_sec = 5;
         tv.tv_usec = 0;
         setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
 
-        // 读取第一次响应
+        // read first response
         std::string first_response;
         
         while (true) {
@@ -568,7 +568,7 @@ TEST_F(ProxyTest, TestBasicCaching) {
         
         std::cout << "First response:\n" << first_response << std::endl;
         
-        // 检查第一次响应是否是 200 OK
+        // check if first response is 200 OK
         EXPECT_TRUE(first_response.find("HTTP/1.1 200 OK") != std::string::npos || 
                     first_response.find("HTTP/1.1 200") != std::string::npos) 
             << "First response status is not 200 OK";
@@ -578,17 +578,17 @@ TEST_F(ProxyTest, TestBasicCaching) {
         
         close(client_sock);
         
-        // 等待一会儿
+        // wait a moment
         std::this_thread::sleep_for(std::chrono::seconds(1));
         
-        // 第二次请求 - 由于代理有缓存，会返回 200
+        // second request - since proxy has cache, it will return 200
         std::cout << "Sending second request to test caching..." << std::endl;
         client_sock = create_client_socket();
         
         sent = send(client_sock, get_request.c_str(), get_request.size(), 0);
         EXPECT_EQ(sent, static_cast<ssize_t>(get_request.size())) << "Second GET request not fully sent.";
         
-        // 读取第二次响应
+        // read second response
         std::string second_response;
         while (true) {
             ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
@@ -600,7 +600,7 @@ TEST_F(ProxyTest, TestBasicCaching) {
         
         std::cout << "Second response:\n" << second_response << std::endl;
         
-        // 检查第er次响应是否是 200 OK
+        // check if second response is 200 OK
         EXPECT_TRUE(first_response.find("HTTP/1.1 200 OK") != std::string::npos || 
                     first_response.find("HTTP/1.1 200") != std::string::npos) 
             << "First response status is not 200 OK";
@@ -622,7 +622,7 @@ TEST_F(ProxyTest, TestCacheRevalidation) {
     std::cout << "\n=== Starting TestCacheRevalidation ===" << std::endl;
     
     try {
-        // 第一次请求 - 应该从服务器获取并缓存
+        // first request - should get from server and cache
         int client_sock = create_client_socket();
         std::string get_request = 
             "GET http://127.0.0.1:5000/revalid-cache HTTP/1.1\r\n"
@@ -632,13 +632,13 @@ TEST_F(ProxyTest, TestCacheRevalidation) {
         ssize_t sent = send(client_sock, get_request.c_str(), get_request.size(), 0);
         EXPECT_EQ(sent, static_cast<ssize_t>(get_request.size())) << "First GET request not fully sent.";
 
-        // 设置接收超时
+        // set receive timeout
         struct timeval tv;
         tv.tv_sec = 5;
         tv.tv_usec = 0;
         setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
 
-        // 读取第一次响应
+        // read first response
         std::string first_response;
         char buffer[4096];
         
@@ -658,23 +658,23 @@ TEST_F(ProxyTest, TestCacheRevalidation) {
         
         close(client_sock);
         
-        // 等待一会儿确保响应被缓存
+        // wait a moment to ensure response is cached
         std::this_thread::sleep_for(std::chrono::seconds(1));
         
-        // 第二次请求 - 使用 max-age=0 强制重新验证
+        // second request - use max-age=0 to force revalidation
         std::cout << "Sending second request with no-cache..." << std::endl;
         client_sock = create_client_socket();
         
         std::string second_get_request = 
             "GET http://127.0.0.1:5000/revalid-cache HTTP/1.1\r\n"
             "Host: 127.0.0.1:5000\r\n"
-            "Cache-Control: no-cache\r\n"  // 添加 max-age=0 指令
+            "Cache-Control: no-cache\r\n"  // add max-age=0 directive
             "Connection: close\r\n\r\n";
         
         sent = send(client_sock, second_get_request.c_str(), second_get_request.size(), 0);
         EXPECT_EQ(sent, static_cast<ssize_t>(second_get_request.size())) << "Second GET request not fully sent.";
         
-        // 读取第二次响应
+        // read second response
         std::string second_response;
         while (true) {
             ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
@@ -686,24 +686,24 @@ TEST_F(ProxyTest, TestCacheRevalidation) {
         
         std::cout << "Second response:\n" << second_response << std::endl;
         
-        // 检查第二次响应是否也是 200 OK
+        // check if second response is also 200 OK
         EXPECT_TRUE(second_response.find("HTTP/1.1 200 OK") != std::string::npos) 
             << "Second response status is not 200 OK";
         
-        // 检查第二次响应是否包含 ETag
+        // check if second response contains ETag
         EXPECT_TRUE(second_response.find("ETag:") != std::string::npos)
             << "Second response does not contain ETag";
         
         close(client_sock);
         
-        // 第三次请求 - 此时服务器会更改 ETag
+        // third request - at this point, server will change ETag
         std::cout << "Sending third request to test ETag change..." << std::endl;
         client_sock = create_client_socket();
         
         sent = send(client_sock, second_get_request.c_str(), second_get_request.size(), 0);
         EXPECT_EQ(sent, static_cast<ssize_t>(second_get_request.size())) << "Third GET request not fully sent.";
         
-        // 读取第三次响应
+        // read third response
         std::string third_response;
         while (true) {
             ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
@@ -715,7 +715,7 @@ TEST_F(ProxyTest, TestCacheRevalidation) {
         
         std::cout << "Third response:\n" << third_response << std::endl;
         
-        // 检查第三次响应是否也是 200 OK
+        // check if third response is also 200 OK
         EXPECT_TRUE(third_response.find("HTTP/1.1 200 OK") != std::string::npos) 
             << "Third response status is not 200 OK";
         EXPECT_TRUE(third_response.find("v2") != std::string::npos) 
