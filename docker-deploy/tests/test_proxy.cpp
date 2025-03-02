@@ -607,12 +607,10 @@ TEST_F(ProxyTest, TestBasicCaching) {
         std::cout << "Second response:\n" << second_response << std::endl;
         
         // check if second response is 200 OK
-        EXPECT_TRUE(first_response.find("HTTP/1.1 200 OK") != std::string::npos || 
-                    first_response.find("HTTP/1.1 200") != std::string::npos) 
-            << "First response status is not 200 OK";
+        EXPECT_TRUE(second_response.find("HTTP/1.1 200 OK") != std::string::npos) << "Second response is not 200 OK";
         
-        EXPECT_TRUE(first_response.find("hello! I'm valid_cache!") != std::string::npos)
-            << "First response does not contain expected content";
+        EXPECT_TRUE(second_response.find("hello! I'm valid_cache!") != std::string::npos)
+            << "Second response does not contain expected content";
         
         close(client_sock);
     }
@@ -997,7 +995,7 @@ TEST_F(ProxyTest, TestConcurrentRequests) {
     std::cout << "\n=== Starting TestConcurrentRequests ===" << std::endl;
     
     try {
-        const int NUM_REQUESTS = 10;  // 修改为10个请求
+        const int NUM_REQUESTS = 10;
         std::vector<std::thread> threads;
         std::atomic<int> success_count(0);
         std::vector<std::string> errors;
