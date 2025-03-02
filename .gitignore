@@ -55,3 +55,4 @@ Thumbs.db
 logs/
 proxy.log
 docker-deploy/tests/test_logs/
+docker-deploy/tests/__pycache__/
