@@ -2,11 +2,17 @@
 
 CacheDecision::Decision CacheDecision::makeDecision(const Request & request){
     string cacheControl = request.getHeader("Cache-Control");
+    // no cache control
+    if (cacheControl == ""){return CacheDecision::DIRECT;}
+
     Cache & cache = Cache::getInstance();
     Cache::CacheStatus cacheStatus = cache.checkStatus(request.getUrl());
     CacheEntry * entry = cache.getEntry(request.getUrl());
-    if (entry == NULL){return CacheDecision::DIRECT;}
+ 
+    // no entry
+    if (cacheStatus == Cache::NOT_IN_CACHE){return CacheDecision::DIRECT;}
 
+    // check every directive
     if (cacheControl.find("no-store") != string::npos){
         return CacheDecision::DIRECT;
     }
@@ -29,12 +35,10 @@ CacheDecision::Decision CacheDecision::makeDecision(const Request & request){
     if (cacheControl.find("max-stale") != string::npos){
         return handle_max_stale(cacheControl, entry);
     }
-    if (cacheControl.find("no-store") != string::npos){
-        return CacheDecision::DIRECT;
+    if (cacheControl.find("no-transform") != string::npos){
+        return CacheDecision::NO_TRANSFORM;
     }
-    if (cacheControl.find("no-store") != string::npos){
-        return CacheDecision::DIRECT;
-    }
+    return CacheDecision::DIRECT;
 }
 
 CacheDecision::Decision CacheDecision::handle_max_age(const string & cacheControl, const CacheEntry * entry){
@@ -78,6 +82,26 @@ CacheDecision::Decision CacheDecision::handle_max_stale(const string & cacheCont
         return CacheDecision::REVALIDATE;
     }
 }
+
+// CacheDecision::Decision CacheDecision::handle_no_cache_contorl(const string & cacheControl, const CacheEntry * entry){
+//     // Pragma
+//     if (cacheControl.find("Pragma: no-cache") != string::npos) {
+//         return CacheDecision::DIRECT
+//     }
+
+//     // Expires
+//     if (cacheControl.find("Expires") != string::npos) {
+//         return entry->isExpired() ? CacheDecision::DIRECT : CacheDecision::RETURN_CACHE;
+//     }
+
+//     // Modified
+//     if (cacheControl.find("Last-Modified") != string::npos) {
+//         return entry->isModifiedAfter() ? CACHEABLE : BYPASS;
+//     }
+
+//     // Direct
+//     return CacheDecision::DIRECT;
+// }
 
 int CacheDecision::parseTime(const string & cacheControl, string directive){
     regex time_regex(".*?"+directive+"=(\\d+)");

@@ -13,6 +13,8 @@ add_library(proxy_lib
     Parser.cpp
     Cache.cpp
     CacheEntry.cpp
+    CacheDecision.cpp
+    CacheHandler.cpp
 )
 
 # Add main executable

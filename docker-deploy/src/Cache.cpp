@@ -259,11 +259,23 @@ string Cache::extractETag(const string& response_headers) {
     return "";
 }
 
-string Cache::extractLastModified(const string& response_headers) {
+time_t Cache::extractLastModified(const string& response_headers) {
     regex last_modified_regex("Last-Modified: (.+)");
     smatch last_modified_match;
     if (regex_search(response_headers, last_modified_match, last_modified_regex)) {
-        return last_modified_match[1];
+        string last_modified_str =  last_modified_match[1];
+        // parse HTTP date format
+        struct tm tm = {};
+        strptime(last_modified_str.c_str(), "%a, %d %b %Y %H:%M:%S GMT", &tm);
+        time_t last_modified_time = mktime(&tm);
+        
+        // adjust to GMT
+        last_modified_time -= timezone;
+        
+        if (last_modified_time > time(nullptr)) {
+            return time(nullptr);;
+        }
+        return last_modified_time;
     }
-    return "";
+    return time(nullptr);;
 }

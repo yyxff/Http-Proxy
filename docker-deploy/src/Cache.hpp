@@ -57,7 +57,7 @@ public:
     static time_t parseExpiresTime(const string& response_headers);
     static bool requiresRevalidation(const string& response_headers);
     static string extractETag(const string& response_headers);
-    static string extractLastModified(const string& response_headers);
+    static time_t extractLastModified(const string& response_headers);
 
 
 };

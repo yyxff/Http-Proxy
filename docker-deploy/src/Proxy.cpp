@@ -686,34 +686,59 @@ void Proxy::handle_cache(int client_fd, const Request& request){
     Cache & cache = Cache::getInstance();
     
     Cache::CacheStatus status = cache.checkStatus(request.getUrl());
+    CacheEntry * entry = cache.getEntry(request.getUrl());
 
-    switch(status){
-        case Cache::CacheStatus::NOT_IN_CACHE:{
-            logger.info(request.getId(),"NOT_IN_CACHE");
-            handle_get(client_fd, request);
-            break;
-        }
-        case Cache::CacheStatus::IN_CACHE_VALID:{
-            logger.info(request.getId(),"IN_CACHE_VALID");
-            // todo check request if can use cache
-            if (request.getHeader("Cache-Control").find("no-cache") != string::npos){
-                revalid(client_fd, request);
-            }else{
-                returnCache(client_fd, request);
+    // switch(status){
+    //     case Cache::CacheStatus::NOT_IN_CACHE:{
+    //         logger.info(request.getId(),"NOT_IN_CACHE");
+    //         handle_get(client_fd, request);
+    //         break;
+    //     }
+    //     case Cache::CacheStatus::IN_CACHE_VALID:{
+    //         logger.info(request.getId(),"IN_CACHE_VALID");
+    //         // todo check request if can use cache
+    //         if (request.getHeader("Cache-Control").find("no-cache") != string::npos){
+    //             revalid(client_fd, request);
+    //         }else{
+    //             returnCache(client_fd, request);
+    //         }
+    //         break;
+    //     }
+    //     case Cache::CacheStatus::IN_CACHE_EXPIRED:{
+    //         logger.info(request.getId(),"IN_CACHE_EXPIRED");
+    //         handle_get(client_fd, request);
+    //         break;
+    //     }
+    //     case Cache::CacheStatus::IN_CACHE_NEEDS_VALIDATION:{
+    //         logger.info(request.getId(),"IN_CACHE_NEEDS_VALIDATION");
+    //         revalid(client_fd, request);
+    //         break;
+    //     }
+    // }
+    CacheDecision cacheDecision;
+    CacheHandler cacheHandler;
+    CacheDecision::Decision decision = cacheDecision.makeDecision(request);
+    // if need to send 
+    if (cacheHandler.need_to_send(decision)){
+        switch(decision){
+            case CacheDecision::DIRECT:{
+                handle_get(client_fd, request);
+                break;
             }
-            break;
+            case CacheDecision::REVALIDATE:{
+                revalid(client_fd, request);
+                break;
+            }
+            case CacheDecision::NO_TRANSFORM:{
+                handle_get(client_fd, request);
+                break;
+            }
         }
-        case Cache::CacheStatus::IN_CACHE_EXPIRED:{
-            logger.info(request.getId(),"IN_CACHE_EXPIRED");
-            handle_get(client_fd, request);
-            break;
-        }
-        case Cache::CacheStatus::IN_CACHE_NEEDS_VALIDATION:{
-            logger.info(request.getId(),"IN_CACHE_NEEDS_VALIDATION");
-            revalid(client_fd, request);
-            break;
-        }
+    }else{// if just return
+        string response = cacheHandler.build_forward_response(decision, entry);
+        send_all(client_fd, response, request.getId());
     }
+    
 
 }
 

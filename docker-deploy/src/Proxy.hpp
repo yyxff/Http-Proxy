@@ -11,6 +11,8 @@
 #include <mutex>
 #include "Logger.hpp"
 #include "Parser.hpp"
+#include "CacheDecision.hpp"
+#include "CacheHandler.hpp"
 #include <condition_variable>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>

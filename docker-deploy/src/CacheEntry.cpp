@@ -22,6 +22,10 @@ bool CacheEntry::isExpiredByAge(int maxAge) const {
 return expires_time - creation_time > maxAge;
 }
 
+bool CacheEntry::isModifiedAfter(time_t request_time) const {
+    return request_time < last_modified;
+}
+
 bool CacheEntry::needsRevalidation() const {
 return requires_revalidation;
 }
@@ -46,7 +50,7 @@ string CacheEntry::getETag() const {
 return etag;
 }
 
-string CacheEntry::getLastModified() const {
+time_t CacheEntry::getLastModified() const {
 return last_modified;
 }
 
