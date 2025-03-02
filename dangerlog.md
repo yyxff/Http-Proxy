@@ -15,7 +15,7 @@
 ## Implementation Challenges
 
 ### Cache Validation Mechanism
-- **Problem**: Implementing proper cache validation with ETag and Last-Modified headers.
+- **Problem**: Implementing proper cache validation with ETag.
 - **Solution**: Created a validation system that checks cache status and sends conditional requests (`If-None-Match`, `If-Modified-Since`) when needed.
 - **Lesson**: HTTP caching is more complex than simple storage; it requires careful implementation of validation mechanisms.
 
