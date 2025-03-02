@@ -997,7 +997,7 @@ TEST_F(ProxyTest, TestConcurrentRequests) {
     std::cout << "\n=== Starting TestConcurrentRequests ===" << std::endl;
     
     try {
-        const int NUM_REQUESTS = 5;  // Reduced from 10 to 5 for better stability
+        const int NUM_REQUESTS = 10;  // 修改为10个请求
         std::vector<std::thread> threads;
         std::atomic<int> success_count(0);
         std::vector<std::string> errors;
@@ -1089,8 +1089,8 @@ TEST_F(ProxyTest, TestConcurrentRequests) {
         
         std::cout << "Concurrent requests completed: " << success_count << "/" << NUM_REQUESTS << std::endl;
         
-        // verify most requests succeeded - reduced threshold to 60%
-        EXPECT_GE(success_count, NUM_REQUESTS * 0.6) << "Less than 60% of concurrent requests succeeded";
+        // verify most requests succeeded - reduced threshold to 80%
+        EXPECT_GE(success_count, NUM_REQUESTS * 0.8) << "Less than 80% of concurrent requests succeeded";
     }
     catch (const std::exception &e) {
         FAIL() << "Exception in TestConcurrentRequests: " << e.what();
