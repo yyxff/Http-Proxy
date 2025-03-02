@@ -33,6 +33,20 @@ Cache::CacheStatus Cache::checkStatus(const string& url) {
     return IN_CACHE_VALID;
 }
 
+Cache::CacheStatus Cache::checkExpiredByAge(const string& url, int age) {
+    lock_guard<mutex> lock(cache_mutex);
+    auto it = cache_map.find(url);
+    if (it == cache_map.end()) {
+        return NOT_IN_CACHE;
+    }
+    const CacheEntry& entry = it->second;
+    if (entry.isExpiredByAge(age)){
+        return IN_CACHE_EXPIRED;
+    }
+    return IN_CACHE_VALID;
+
+}
+
 void Cache::addToCache(const string& url, 
                        const string& response_line, 
                        const string& response_headers, 

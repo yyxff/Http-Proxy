@@ -31,6 +31,7 @@ class CacheEntry {
                    const string& response_body);
         
         bool isExpired() const;
+        bool isExpiredByAge(int maxAge) const;
         bool needsRevalidation() const;
         string getFullResponse() const;
         string getResponseLine() const;
@@ -39,6 +40,9 @@ class CacheEntry {
         string getETag() const;
         string getLastModified() const;
         time_t getExpiresTime() const;
+        int getAge() const;
+        int getRestTime() const;
+        int getStaleTime() const;
 };
     
 

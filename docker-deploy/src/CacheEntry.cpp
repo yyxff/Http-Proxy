@@ -18,6 +18,10 @@ bool CacheEntry::isExpired() const {
 return time(nullptr) > expires_time;
 }
 
+bool CacheEntry::isExpiredByAge(int maxAge) const {
+return expires_time - creation_time > maxAge;
+}
+
 bool CacheEntry::needsRevalidation() const {
 return requires_revalidation;
 }
@@ -48,4 +52,16 @@ return last_modified;
 
 time_t CacheEntry::getExpiresTime() const {
 return expires_time;
+}
+
+int CacheEntry::getAge() const {
+    return time(nullptr) - creation_time;
+}
+
+int CacheEntry::getRestTime() const {
+    return expires_time - time(nullptr);
+}
+
+int CacheEntry::getStaleTime() const {
+    return - getRestTime();
 }
