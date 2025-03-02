@@ -729,6 +729,58 @@ TEST_F(ProxyTest, TestCacheRevalidation) {
     std::cout << "=== Completed TestCacheRevalidation ===" << std::endl;
 }
 
+// ============== Test #8: Invalid Domain ==============
+TEST_F(ProxyTest, TestInvalidDomain) {
+    std::cout << "\n=== Starting TestInvalidDomain ===" << std::endl;
+    
+    try {
+        int client_sock = create_client_socket();
+        std::string invalid_domain_request = 
+            "GET http://invalid-domain-that-does-not-exist-12345.com/ HTTP/1.1\r\n"
+            "Host: invalid-domain-that-does-not-exist-12345.com\r\n"
+            "Connection: close\r\n\r\n";
+        
+        ssize_t sent = send(client_sock, invalid_domain_request.c_str(), invalid_domain_request.size(), 0);
+        EXPECT_EQ(sent, static_cast<ssize_t>(invalid_domain_request.size())) << "Invalid domain request not fully sent.";
+
+        // set receive timeout
+        struct timeval tv;
+        tv.tv_sec = 10;  // give enough time for DNS resolution failure
+        tv.tv_usec = 0;
+        setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
+        // read response
+        char buffer[4096];
+        std::string invalid_domain_response;
+        
+        while (true) {
+            ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+            if (received <= 0) break;
+            
+            buffer[received] = '\0';
+            invalid_domain_response.append(buffer, received);
+        }
+        
+        std::cout << "Invalid domain response:\n" << invalid_domain_response << std::endl;
+        
+        // verify proxy returned error response
+        EXPECT_FALSE(invalid_domain_response.empty()) << "No response received for invalid domain";
+        EXPECT_TRUE(
+            invalid_domain_response.find("HTTP/1.1 502") != std::string::npos || 
+            invalid_domain_response.find("HTTP/1.1 500") != std::string::npos || 
+            invalid_domain_response.find("HTTP/1.1 404") != std::string::npos ||
+            invalid_domain_response.find("Error") != std::string::npos
+        ) << "Expected error response for invalid domain";
+        
+        close(client_sock);
+    }
+    catch (const std::exception &e) {
+        FAIL() << "Exception in TestInvalidDomain: " << e.what();
+    }
+    
+    std::cout << "=== Completed TestInvalidDomain ===" << std::endl;
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
