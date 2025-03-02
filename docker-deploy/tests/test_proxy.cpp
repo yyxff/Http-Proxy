@@ -586,7 +586,11 @@ TEST_F(ProxyTest, TestBasicCaching) {
         // second request - since proxy has cache, it will return 200
         std::cout << "Sending second request to test caching..." << std::endl;
         client_sock = create_client_socket();
-        
+        get_request = 
+            "GET http://127.0.0.1:5000/valid-cache HTTP/1.1\r\n"
+            "Host: 127.0.0.1:5000\r\n"
+            "Cache-Control: only-if-cached"
+            "Connection: close\r\n\r\n";
         sent = send(client_sock, get_request.c_str(), get_request.size(), 0);
         EXPECT_EQ(sent, static_cast<ssize_t>(get_request.size())) << "Second GET request not fully sent.";
         

@@ -40,6 +40,9 @@ public:
     Cache(size_t max_size = 10 * 1024 * 1024); // Default 10MB cache
     
     CacheStatus checkStatus(const string& url);
+
+    CacheStatus checkExpiredByAge(const string& url, int age);
+
     void addToCache(const string& url, 
                     const string& response_line, 
                     const string& response_headers, 
@@ -54,7 +57,7 @@ public:
     static time_t parseExpiresTime(const string& response_headers);
     static bool requiresRevalidation(const string& response_headers);
     static string extractETag(const string& response_headers);
-    static string extractLastModified(const string& response_headers);
+    static time_t extractLastModified(const string& response_headers);
 
 
 };

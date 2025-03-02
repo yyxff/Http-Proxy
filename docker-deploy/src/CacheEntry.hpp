@@ -23,7 +23,7 @@ class CacheEntry {
         time_t expires_time;
         bool requires_revalidation;
         string etag;
-        string last_modified;
+        time_t last_modified;
         
     public:
         CacheEntry(const string& response_line, 
@@ -31,14 +31,19 @@ class CacheEntry {
                    const string& response_body);
         
         bool isExpired() const;
+        bool isExpiredByAge(int maxAge) const;
+        bool isModifiedAfter(time_t request_time) const;
         bool needsRevalidation() const;
         string getFullResponse() const;
         string getResponseLine() const;
         string getResponseHeaders() const;
         string getResponseBody() const;
         string getETag() const;
-        string getLastModified() const;
+        time_t getLastModified() const;
         time_t getExpiresTime() const;
+        int getAge() const;
+        int getRestTime() const;
+        int getStaleTime() const;
 };
     
 
