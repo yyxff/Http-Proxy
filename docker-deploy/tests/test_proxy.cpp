@@ -13,6 +13,8 @@
 #include <cstring>
 #include <filesystem>
 #include <future>
+#include <sys/wait.h>
+#include <signal.h>
 
 class ProxyTest : public ::testing::Test {
 protected:
@@ -832,6 +834,93 @@ TEST_F(ProxyTest, TestConnectionTimeout) {
     }
     
     std::cout << "=== Completed TestConnectionTimeout ===" << std::endl;
+}
+
+TEST_F(ProxyTest, TestMalformedRequest) {
+    std::cout << "\n=== Starting TestMalformedRequest ===" << std::endl;
+    
+    // use fork to create child process
+    pid_t pid = fork();
+    
+    if (pid == -1) {
+        // fork failed
+        std::cout << "Failed to fork process for malformed request test." << std::endl;
+        FAIL() << "Fork failed";
+    } else if (pid == 0) {
+        // child process
+        try {
+            int client_sock = create_client_socket();
+            std::string malformed_request = "INVALID / HTTP/1.1\r\nHost: example.com\r\n\r\n";
+            
+            send(client_sock, malformed_request.c_str(), malformed_request.size(), 0);
+            
+            // set receive timeout
+            struct timeval tv;
+            tv.tv_sec = 3;
+            tv.tv_usec = 0;
+            setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+            
+            // read response
+            char buffer[4096];
+            std::string malformed_response;
+            
+            while (true) {
+                ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+                if (received <= 0) break;
+                
+                buffer[received] = '\0';
+                malformed_response.append(buffer, received);
+            }
+            
+            std::cout << "Child process received response:\n" << malformed_response << std::endl;
+            close(client_sock);
+            
+            // child process exits normally
+            exit(0);
+        }
+        catch (const std::exception &e) {
+            std::cout << "Exception in child process: " << e.what() << std::endl;
+            exit(1);
+        }
+    } else {
+        // parent process
+        // wait for child process, but set timeout
+        int status;
+        pid_t result;
+        time_t start_time = time(NULL);
+        
+        // wait for 5 seconds
+        while (time(NULL) - start_time < 5) {
+            result = waitpid(pid, &status, WNOHANG);
+            
+            if (result == -1) {
+                // waitpid error
+                std::cout << "Error waiting for child process." << std::endl;
+                break;
+            } else if (result == 0) {
+                // child process is still running, continue waiting
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                continue;
+            } else {
+                // child process has exited
+                if (WIFEXITED(status)) {
+                    std::cout << "Child process exited with status " << WEXITSTATUS(status) << std::endl;
+                } else if (WIFSIGNALED(status)) {
+                    std::cout << "Child process killed by signal " << WTERMSIG(status) << std::endl;
+                }
+                break;
+            }
+        }
+        
+        // if child process is still running, kill it
+        if (time(NULL) - start_time >= 5) {
+            std::cout << "Child process timed out, killing it." << std::endl;
+            kill(pid, SIGKILL);
+            waitpid(pid, NULL, 0);  // clean up zombie process
+        }
+    }
+    
+    std::cout << "=== Completed TestMalformedRequest ===" << std::endl;
 }
 
 int main(int argc, char **argv) {
