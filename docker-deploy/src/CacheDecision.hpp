@@ -6,6 +6,10 @@
 #include "Request.hpp"
 #include <regex>
 #include <algorithm>
+#include <ctime>
+#include <string>
+#include <iomanip>
+#include <sstream>
 using namespace std;
 class CacheDecision{
     public:
@@ -26,11 +30,12 @@ class CacheDecision{
     
         static inline Logger & logger = Logger::getInstance();
 
-        Decision handle_max_age(const string & cacheControl, const CacheEntry * entry);
-        Decision handle_min_fresh(const string & cacheControl, const CacheEntry * entry);
-        Decision handle_max_stale(const string & cacheControl, const CacheEntry * entry);
+        Decision handle_max_age(const string & cacheControl, const CacheEntry * entry, int id);
+        Decision handle_min_fresh(const string & cacheControl, const CacheEntry * entry, int id);
+        Decision handle_max_stale(const string & cacheControl, const CacheEntry * entry, int id);
 
         int parseTime(const string & cacheControl, string directive);
+        string timeToStr(time_t time);
 
 };
 

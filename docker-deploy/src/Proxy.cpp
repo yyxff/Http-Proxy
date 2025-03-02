@@ -688,33 +688,7 @@ void Proxy::handle_cache(int client_fd, const Request& request){
     Cache::CacheStatus status = cache.checkStatus(request.getUrl());
     CacheEntry * entry = cache.getEntry(request.getUrl());
 
-    // switch(status){
-    //     case Cache::CacheStatus::NOT_IN_CACHE:{
-    //         logger.info(request.getId(),"NOT_IN_CACHE");
-    //         handle_get(client_fd, request);
-    //         break;
-    //     }
-    //     case Cache::CacheStatus::IN_CACHE_VALID:{
-    //         logger.info(request.getId(),"IN_CACHE_VALID");
-    //         // todo check request if can use cache
-    //         if (request.getHeader("Cache-Control").find("no-cache") != string::npos){
-    //             revalid(client_fd, request);
-    //         }else{
-    //             returnCache(client_fd, request);
-    //         }
-    //         break;
-    //     }
-    //     case Cache::CacheStatus::IN_CACHE_EXPIRED:{
-    //         logger.info(request.getId(),"IN_CACHE_EXPIRED");
-    //         handle_get(client_fd, request);
-    //         break;
-    //     }
-    //     case Cache::CacheStatus::IN_CACHE_NEEDS_VALIDATION:{
-    //         logger.info(request.getId(),"IN_CACHE_NEEDS_VALIDATION");
-    //         revalid(client_fd, request);
-    //         break;
-    //     }
-    // }
+    // judge cache decision
     CacheDecision cacheDecision;
     CacheHandler cacheHandler;
     CacheDecision::Decision decision = cacheDecision.makeDecision(request);
