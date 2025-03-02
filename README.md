@@ -51,6 +51,7 @@ The proxy is built with a modular design:
 - **Logger**: Logging system for debugging and monitoring
 
 ## Project Structure
+```bash
 docker-deploy/
 ├── src/                  # Source code
 │   ├── Cache.cpp         # Cache implementation
@@ -76,6 +77,7 @@ docker-deploy/
 ├── build/                # Build directory
 ├── logs/                 # Log files
 └── docker-compose.yml    # Docker Compose configuration
+```
 
 ## Testing
 The project includes a comprehensive test suite that verifies various aspects of the proxy:
