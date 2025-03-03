@@ -35,7 +35,7 @@ public:
         IN_CACHE_NEEDS_VALIDATION
     };
 
-    static Cache & getInstance();
+    // static Cache & getInstance();
     
     Cache(size_t max_size = 10 * 1024 * 1024); // Default 10MB cache
     

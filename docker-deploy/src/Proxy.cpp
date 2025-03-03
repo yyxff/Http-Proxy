@@ -265,9 +265,10 @@ void Proxy::handle_get(int client_fd, const Request& request) {
         // cache it if ok
         if (Cache::isCacheable(response)){
             logger.debug(request.getId(), "response cacheable");
-            Cache & cache = Cache::getInstance();
+            // Cache & cache = Cache::getInstance();
+            Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
             CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
-            logger.debug(request.getId(),"try to cache: "+request.getUrl());
+            logger.debug(request.getId(),"try to cache: "+request.getUrl()+" to cache "+to_string(CacheMaster::getInstance().selectIndex(request.getUrl())));
             cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());
             if (cacheEntry.needsRevalidation()){
                 logger.info(request.getId(), "cached, but requires re-validation");
@@ -702,7 +703,9 @@ void Proxy::send_all(int client_fd, std::string full_response, int id){
 
 void Proxy::handle_cache(int client_fd, const Request& request){
     logger.debug(request.getId(),"handle cache");
-    Cache & cache = Cache::getInstance();
+    // Cache & cache = Cache::getInstance();
+    Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
+
     
     Cache::CacheStatus status = cache.checkStatus(request.getUrl());
     CacheEntry * entry = cache.getEntry(request.getUrl());
@@ -737,7 +740,9 @@ void Proxy::handle_cache(int client_fd, const Request& request){
 
 void Proxy::revalid(int client_fd, const Request& request){
     logger.debug(request.getId(),"revalid");
-    Cache & cache = Cache::getInstance();
+    // Cache & cache = Cache::getInstance();
+    Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
+
     CacheEntry * cacheEntry = cache.getEntry(request.getUrl());
     string eTag = Cache::extractETag(cacheEntry->getResponseHeaders());
     if (eTag == ""){// no etag
@@ -751,7 +756,9 @@ void Proxy::revalid(int client_fd, const Request& request){
 
 void Proxy::returnCache(int client_fd, const Request& request){
     logger.debug(request.getId(),"return by cache");
-    Cache & cache = Cache::getInstance();
+    // Cache & cache = Cache::getInstance();
+    Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
+
     CacheEntry * cacheEntry = cache.getEntry(request.getUrl());
     send_all(client_fd, cacheEntry->getFullResponse(), request.getId());
     logger.debug(request.getId(),"done return cache");
@@ -840,7 +847,9 @@ void Proxy::handle_revalid(int client_fd, const Request& request, string & eTag)
         // cache it if ok
         if (Cache::isCacheable(response)){
             logger.debug(request.getId(), "response cacheable");
-            Cache & cache = Cache::getInstance();
+            // Cache & cache = Cache::getInstance();
+            Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
+
             CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
             logger.debug(request.getId(),"try to cache: "+request.getUrl());
             cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());

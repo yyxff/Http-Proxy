@@ -15,6 +15,7 @@ add_library(proxy_lib
     CacheEntry.cpp
     CacheDecision.cpp
     CacheHandler.cpp
+    CacheMaster.cpp
 )
 
 # Add main executable

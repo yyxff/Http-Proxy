@@ -4,7 +4,9 @@ CacheDecision::Decision CacheDecision::makeDecision(const Request & request){
     string cacheControl = request.getHeader("Cache-Control");
     
 
-    Cache & cache = Cache::getInstance();
+    // Cache & cache = Cache::getInstance();
+    Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
+    
     Cache::CacheStatus cacheStatus = cache.checkStatus(request.getUrl());
     CacheEntry * entry = cache.getEntry(request.getUrl());
  

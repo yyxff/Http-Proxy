@@ -5,10 +5,10 @@
 #include <ctime>
 
 // singleton get instance
-Cache & Cache::getInstance() {
-    static Cache instance;
-    return instance;
-}
+// Cache & Cache::getInstance() {
+//     static Cache instance;
+//     return instance;
+// }
 
 Cache::Cache(size_t max_size) : max_size(max_size), current_size(0) {}
 
