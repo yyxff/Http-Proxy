@@ -14,19 +14,34 @@ services:
       - TZ=America/New_York
     networks:
       - my_network
+    command: sh -c "ulimit -c unlimited && 
+              cd /cores && 
+              mkdir -p /app/build && 
+              cd /app/build && 
+              cmake ../src && 
+              make && ./proxy || sleep infinity"
+
+
+  server:
+    build: ./tests/flaskServer
+    ports:
+      - "5000:5000"
+    networks:
+      - my_network
 
 
   swarm:
     image: locustio/locust:latest
     volumes:
       - ./tests/locust/:/locust/
-    command: -f /locust/locust.py --host=http://httpbin.org/forms/post --users=100 --spawn-rate=10
+    command: -f /locust/locust.py --host=http://server:5000/swarm --users=100 --spawn-rate=10
     ports:
       - "8089:8089"
     networks:
       - my_network
     depends_on:
       - proxy
+      - server
 
 networks:
   my_network:

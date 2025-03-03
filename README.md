@@ -114,7 +114,7 @@ sudo docker-compose up swarm --build
 # now locust test web ui should be on http://0.0.0.0:8089 on this machine.
 # if you are on the vm, you may need to forward post 8089 to your local machine.
 
-# 2 press start to use our default config
+# 2 press start to use our default config(visiting a simple server on this machine)
 
 # or configurate it by yourself
 # number of users (peak concurrency)
