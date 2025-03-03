@@ -35,7 +35,7 @@ Request Parser::parseRequest(const std::vector<char> & data){
             // get all data
             if (parser.is_done()) {
                 request = parser.release();
-                logger.info("successfully parsed request method("
+                logger.debug("successfully parsed request method("
                                 +request.method_string().to_string()+") bodyLen("+to_string(request.body().size())+")");
                 // logger.debug(full_response);
                 Request req(request);

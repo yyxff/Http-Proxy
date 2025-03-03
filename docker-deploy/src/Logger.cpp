@@ -27,7 +27,7 @@ void Logger::setLogPath(const std::string & path) {
         }
         
         // Open the log file
-        logFileInfo.open(path+"INFO.log", std::ios::app);
+        logFileInfo.open(path+"proxy.log", std::ios::app);
         if (!logFileInfo.is_open()) {
             throw std::runtime_error("Failed to open log file: " + path);
         }
@@ -131,6 +131,15 @@ void Logger::error(int pid, const std::string & message) {
 
 
 
+
+std::string Logger::getCurrentTimeUTC() {
+    auto now = std::chrono::system_clock::now();
+    time_t newtime = std::chrono::system_clock::to_time_t(now);;
+    struct tm* utc_time = std::gmtime(&newtime);
+    std::string time_str(std::asctime(utc_time));
+    time_str.pop_back();  
+    return time_str;
+}
 
 std::string Logger::getCurrentTime() {
     auto now = std::chrono::system_clock::now();

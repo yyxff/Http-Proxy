@@ -69,3 +69,11 @@ int CacheEntry::getRestTime() const {
 int CacheEntry::getStaleTime() const {
     return - getRestTime();
 }
+
+string CacheEntry::getExpiresTimeStr() const{
+    time_t time = getExpiresTime();
+    struct tm* utc_time = std::gmtime(&time);
+    std::string time_str(std::asctime(utc_time));
+    time_str.pop_back();  
+    return time_str;
+}

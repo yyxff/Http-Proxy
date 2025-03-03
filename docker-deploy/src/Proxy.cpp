@@ -155,7 +155,7 @@ void Proxy::handle_client(int client_fd) {
     // Log the request with client IP and time
     logger.info(request.getId(), "\"" + request.getMethod() + " " + request.getUrl() + 
                " " + request.getVersion() + "\" from " + client_ip + " @ " + 
-               logger.getCurrentTime());
+               logger.getCurrentTimeUTC());
     if (request.getMethod() == "GET") {
         handle_cache(client_fd, request);
         // handle_get(client_fd, request);
@@ -249,11 +249,14 @@ void Proxy::handle_get(int client_fd, const Request& request) {
 
         Parser parser;
         Response response = parser.parseResponse(vector<char>(full_response.begin(),full_response.end()));
-        
+
+        logger.info(request.getId(), "Received \""+response.getFirstLine()+"\" from "+host);
+
         // if ok, send response to client
         if (!full_response.empty()) {
-            logger.info(request.getId(), "From " + host);
+            logger.debug(request.getId(), "From " + host);
             send_all(client_fd, full_response, request.getId());
+            logger.info(request.getId(), "Responding \""+response.getFirstLine()+"\"");
         } else {
             throw std::runtime_error("Empty response from server");
         }
@@ -266,9 +269,19 @@ void Proxy::handle_get(int client_fd, const Request& request) {
             CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
             logger.debug(request.getId(),"try to cache: "+request.getUrl());
             cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());
-        }else{
-            logger.debug(request.getId(), "not cacheable");
+            if (cacheEntry.needsRevalidation()){
+                logger.info(request.getId(), "cached, but requires re-validation");
+            }else{
+                logger.info(request.getId(), "cached, expires at "+cacheEntry.getExpiresTimeStr());
+            }
+            
+        }else if (response.getResult() != 200){
+            logger.info(request.getId(), "not cacheable because response result is "+to_string(response.getResult()));
+        }else {
+            logger.info(request.getId(), "not cacheable because response cache control contains \"no-store\" or \"private\"");
         }
+
+        // logger.info(request.getId(), "Tunnel closed");
     }
     catch (const std::exception& e) {
         logger.error(request.getId(), "ERROR in handle_get: " + std::string(e.what()));
@@ -351,7 +364,7 @@ void Proxy::handle_post(int client_fd, const Request& request) {
     int server_fd = -1;
     try {
         server_fd = connect_to_server(host_name, server_port);
-        logger.info(request.getId(), "Successfully connected to server " + host_name + ":" + std::to_string(server_port));
+        logger.debug(request.getId(), "Successfully connected to server " + host_name + ":" + std::to_string(server_port));
         
         // Set receive timeout to 10 seconds (same as test)
         struct timeval timeout;
@@ -366,15 +379,19 @@ void Proxy::handle_post(int client_fd, const Request& request) {
         
         // receive response from server
         std::string full_response = receive(server_fd, request.getId());
-        
+        Parser parser;
+        Response response = parser.parseResponse(vector<char>(full_response.begin(),full_response.end()));
+
         // if ok, send response to client
         if (!full_response.empty()) {
-            logger.info(request.getId(), "From " + host);
+            logger.debug(request.getId(), "From " + host);
             send_all(client_fd, full_response, request.getId());
+            logger.info(request.getId(), "Responding \""+response.getFirstLine()+"\"");
         } else {
             throw std::runtime_error("Empty response from server");
         }
-        
+
+        // logger.info(request.getId(), "Tunnel closed");
     }
     catch (const std::exception& e) {
         logger.error(request.getId(), "ERROR in handle_post: " + std::string(e.what()));
@@ -449,7 +466,7 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
     try {
         // Connect to the destination server
         server_fd = connect_to_server(host, port);
-        logger.info(request.getId(), "Successfully connected to destination server " + host + ":" + std::to_string(port)+" on fd "+to_string(server_fd));
+        logger.debug(request.getId(), "Successfully connected to destination server " + host + ":" + std::to_string(port)+" on fd "+to_string(server_fd));
 
         // Send 200 OK to client
         std::string response = "HTTP/1.1 200 Connection established\r\n\r\n";
@@ -528,7 +545,8 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
                 }
             }
 
-            logger.info(request.getId(), "Tunnel closed. Total bytes: client->server=" + 
+            logger.info(request.getId(), "Tunnel closed");
+            logger.debug(request.getId(), "Total bytes: client->server=" + 
                         std::to_string(total_bytes_client_to_server) + ", server->client=" + 
                         std::to_string(total_bytes_server_to_client));
         }
@@ -638,7 +656,7 @@ std::string Proxy::receive(int server_fd, int id){
                     break;
                 } else {
                     logger.error(id, "failed to parse data, ec:"+ec.message()+" code: "+to_string(ec.value()));
-                    break;
+                    throw runtime_error(to_string(id)+": failed to parse data. "+ec.message());
                 }
             }
         }
@@ -646,7 +664,7 @@ std::string Proxy::receive(int server_fd, int id){
         // get all data
         if (parser.is_done()) {
             http::response<http::string_body>  res = parser.release();
-            logger.info(id, "successfully parsed response code("
+            logger.debug(id, "successfully parsed response code("
                             +to_string(res.result_int())+") bodyLen("+to_string(res.body().size())+")");
             // logger.debug(full_response);
             break;
@@ -662,7 +680,7 @@ void Proxy::send_all(int client_fd, std::string full_response, int id){
     if (pos != std::string::npos) {
         std::string response_line = full_response.substr(0, pos);
         
-        logger.info(id, "Full response length: " + 
+        logger.debug(id, "Full response length: " + 
                     std::to_string(full_response.length()) + " bytes");
         
         // Send response to client in chunks
@@ -676,13 +694,14 @@ void Proxy::send_all(int client_fd, std::string full_response, int id){
             }
             total_sent += sent;
         }
-        logger.info(id, "Successfully sent "+to_string(total_sent)+" bytes to client");
+        logger.debug(id, "Successfully sent "+to_string(total_sent)+" bytes to client");
     } else {
         throw std::runtime_error("Invalid response format");
     }
 }
 
 void Proxy::handle_cache(int client_fd, const Request& request){
+    logger.debug(request.getId(),"handle cache");
     Cache & cache = Cache::getInstance();
     
     Cache::CacheStatus status = cache.checkStatus(request.getUrl());

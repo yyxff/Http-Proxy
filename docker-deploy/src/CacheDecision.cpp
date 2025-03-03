@@ -2,17 +2,28 @@
 
 CacheDecision::Decision CacheDecision::makeDecision(const Request & request){
     string cacheControl = request.getHeader("Cache-Control");
-    // no cache control
-    if (cacheControl == ""){return CacheDecision::DIRECT;}
+    
 
     Cache & cache = Cache::getInstance();
     Cache::CacheStatus cacheStatus = cache.checkStatus(request.getUrl());
     CacheEntry * entry = cache.getEntry(request.getUrl());
  
+    // logger.info(request.getId(), "here to decision");
     // no entry
     if (cacheStatus == Cache::NOT_IN_CACHE){
         logger.info(request.getId(), "not in cache");
         return CacheDecision::DIRECT;
+    }
+
+    // no cache control
+    if (cacheControl == ""){
+        if (cacheStatus == Cache::IN_CACHE_VALID){
+            logger.info(request.getId(), "in cache, valid");
+            return CacheDecision::RETURN_CACHE;
+        }else{
+            logger.info(request.getId(), "in cache, requires validation");
+            return CacheDecision::REVALIDATE;
+        }
     }
 
     // check every directive
@@ -56,7 +67,7 @@ CacheDecision::Decision CacheDecision::handle_max_age(const string & cacheContro
         if (cacheControl.find("min-fresh") != string::npos){
             return handle_min_fresh(cacheControl, entry, id);
         }
-        logger.info(id, "in cache, valid");
+        logger.info(id, "in cache, valid(max-age)");
         return CacheDecision::RETURN_CACHE;
     }else{
         if (cacheControl.find("max-stale") != string::npos){
@@ -108,9 +119,9 @@ CacheDecision::Decision CacheDecision::handle_max_stale(const string & cacheCont
 //     }
 
 //     // Modified
-//     if (cacheControl.find("Last-Modified") != string::npos) {
-//         return entry->isModifiedAfter() ? CACHEABLE : BYPASS;
-//     }
+//     // if (cacheControl.find("Last-Modified") != string::npos) {
+//     //     return entry->isModifiedAfter() ? CACHEABLE : BYPASS;
+//     // }
 
 //     // Direct
 //     return CacheDecision::DIRECT;
@@ -127,9 +138,9 @@ int CacheDecision::parseTime(const string & cacheControl, string directive){
 }
 
 string CacheDecision::timeToStr(time_t time){
-    std::tm tm;
-    std::ostringstream oss;
-    gmtime_r(&time, &tm);
-    oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S UTC");
-    return oss.str();
+    time_t newtime = time;
+    struct tm* utc_time = std::gmtime(&newtime);
+    std::string time_str(std::asctime(utc_time));
+    time_str.pop_back();  
+    return time_str;
 }

@@ -44,6 +44,7 @@ class CacheEntry {
         int getAge() const;
         int getRestTime() const;
         int getStaleTime() const;
+        string getExpiresTimeStr() const;
 };
     
 

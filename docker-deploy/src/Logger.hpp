@@ -39,6 +39,8 @@ public:
     // get current time
     std::string getCurrentTime();
 
+    std::string getCurrentTimeUTC();
+
     void setLogPath(const std::string & path);
 
     ~Logger();

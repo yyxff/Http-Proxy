@@ -645,6 +645,7 @@ TEST_F(ProxyTest, TestCacheRevalidation) {
         std::string get_request = 
             "GET http://127.0.0.1:5000/revalid-cache HTTP/1.1\r\n"
             "Host: 127.0.0.1:5000\r\n"
+            "Cache-Control: no-cache\r\n"
             "Connection: close\r\n\r\n";
         
         ssize_t sent = send(client_sock, get_request.c_str(), get_request.size(), 0);

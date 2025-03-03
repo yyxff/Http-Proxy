@@ -50,6 +50,7 @@ public:
     std::string getHeadersStr(){return boost::lexical_cast<std::string>(response.base());}
     std::string getBody() const { return body; }
     int getResult() const { return response.result_int();}
+    std::string getFirstLine() const {return getVersion()+" "+to_string(response.result_int())+" "+boost::lexical_cast<std::string>(response.reason());}
 };
 
 #endif
