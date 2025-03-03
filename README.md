@@ -53,30 +53,28 @@ The proxy is built with a modular design:
 ## Project Structure
 ```bash
 docker-deploy/
-├── src/                  # Source code
-│   ├── Cache.cpp         # Cache implementation
-│   ├── Cache.hpp
-│   ├── CacheEntry.cpp    # Cache entry class
-│   ├── CacheEntry.hpp
-│   ├── Dockerfile        # Docker configuration
-│   ├── Logger.cpp        # Logging system
-│   ├── Logger.hpp
-│   ├── Parser.cpp        # HTTP parser
-│   ├── Parser.hpp
-│   ├── Proxy.cpp         # Main proxy implementation
-│   ├── Proxy.hpp
-│   ├── Request.cpp       # HTTP request representation
-│   ├── Request.hpp
-│   ├── Response.cpp      # HTTP response representation
-│   ├── Response.hpp
-│   └── main.cpp          # Entry point
-├── tests/                # Test suite
-│   ├── CacheServer.py    # Test server for cache validation
-│   ├── locust.py         # Load testing script
-│   └── test_proxy.cpp    # Test cases
-├── build/                # Build directory
-├── logs/                 # Log files
-└── docker-compose.yml    # Docker Compose configuration
+├── src/
+│   ├── main.cpp                 # Entry point for the proxy server
+│   ├── proxy.cpp                # Main proxy implementation
+│   ├── proxy.h                  # Proxy class declaration
+│   ├── logger.cpp               # Logging functionality
+│   ├── logger.h                 # Logger class declaration
+│   ├── cache.cpp                # Cache implementation
+│   ├── cache.h                  # Cache class declaration
+│   ├── cache_decision.cpp       # Cache decision making logic
+│   ├── cache_decision.h         # CacheDecision class declaration
+│   ├── cache_handler.cpp        # Cache handling implementation
+│   ├── cache_handler.h          # CacheHandler class declaration
+│   ├── http_parser.cpp          # HTTP message parsing
+│   ├── http_parser.h            # HTTPParser class declaration
+│   └── utils.h                  # Utility functions and constants
+├── tests/
+│   ├── test_proxy.cpp           # Comprehensive test suite
+│   └── CMakeLists.txt           # Test build configuration
+├── Dockerfile                   # Docker configuration
+├── docker-compose.yml           # Docker Compose configuration
+├── CMakeLists.txt               # Build system configuration
+└── README.md                    # Project documentation
 ```
 
 ## Testing
