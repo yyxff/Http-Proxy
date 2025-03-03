@@ -5,12 +5,15 @@ This project implements a high-performance, multi-threaded HTTP caching proxy se
 
 ## Features
 - **HTTP Method Support**: Handles GET, POST, and CONNECT methods
-- **Caching Mechanism**: Implements HTTP caching with validation using ETags.
 - **Multi-threading**: Supports concurrent connections with thread-per-connection model
+- **Caching Mechanism**: Implements HTTP caching with validation using ETags and Expires, etc.
+- **Cache Segmentation**: we segment caches into 8 pieces, every segment has their own mutex lock. So we can use different caches at same time. It is at most 8 times more efficient.
 - **Chunked Transfer Encoding**: Properly handles chunked responses
 - **HTTPS Tunneling**: Supports CONNECT method for secure connections
+- **Logging System**: Implemented Logging system with singleton pattern
 - **Error Handling**: Comprehensive error handling for network issues and malformed requests
 - **Docker Support**: Runs in containerized environments
+- **Automated Test**: Automated test for basic behaviors and concurrency
 
 ## Installation
 ### Requirements
@@ -19,7 +22,7 @@ This project implements a high-performance, multi-threaded HTTP caching proxy se
 - CMake 3.10+
 - Docker and Docker Compose (for containerized deployment)
 
-### Local Development
+### Deployment
 ```bash
 # Clone the repository
 git clone https://gitlab.oit.duke.edu/yy465/erss-hwk2-yy465-jh730.git
@@ -35,13 +38,22 @@ docker-compose up proxy --build
 
 # View logs
 docker-compose logs -f
+# or view it in volume directory
+cat ./logs/proxy.log
 
 # Stop the container
 docker-compose down
 ```
 
 ## Usage
-The proxy listens on port 12345 by default. Configure your browser or application to use this proxy by setting the proxy host to the machine's IP address and the port to 12345.
+The proxy listens on port 12345 by default. Docker has exposed it.
+```
+Configure your browser proxy for HTTP and HTTPS as
+proxy: <proxy_ip> : <proxy_port>
+
+example:
+proxy: vcm-45xxx.vm.duke.edu : 12345
+```
 
 ## Architecture
 The proxy is built with a modular design:

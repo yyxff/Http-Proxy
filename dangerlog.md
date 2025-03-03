@@ -10,9 +10,27 @@
 ### HTTP Protocol Parsing
 - **Problem**: HTTP protocol has complex specifications with various edge cases.
 - **Solution**: Leveraged `Boost.Beast` for robust HTTP parsing, which simplified handling of headers, chunked encoding, and other HTTP complexities.
+    - once our parsing failed, for example malformed requests, proxy will throw and catch that, then send client a `bad request(400)` and close it
 - **Lesson**: Using established libraries for protocol parsing is more reliable than implementing from scratch. We initially tried to write our own parser and quickly regretted it when faced with all the edge cases.
 
+### Cache For Multithreading
+- **Problem**: When threads access cache, we need to lock it for every operation, which is not efficient
+- **Solution**: we segment caches into 8 pieces, using a CacheMaster to manage them. Different thread may use different `cache segments`, so it is more efficient at most 8 times.
+    - We use `hash(url) % segments.size()` to determine which cache should be accessed.
+    - We use `singleton pattern` for Cache master.
+- **Lesson**: should be careful if using mutex lock in multithreading programming. race-condition may happen everywhere.
+
+### Logging System
+- **Problem**: We need to promise same instance in program, and avoid race-condition in writting to files.
+- **Solution**: We use `singleton pattern` for logging system. We use mutex lock when they are writting to same files.
+- **Lesson**: We should be ware of where we need singleton pattern
+    
 ## Implementation Challenges
+
+### Cache Control Decision Mechanism for Request
+- **Problem**: Request can be sent with a lot of different cache control field, implying tons of different complex situations and bevaviors
+- **Solution**: Created a `decision maker system`, which is kind of a `state machine`, to decide what should we do about cache. A state machine can make the logic more clear and promise output.
+- **Lesson**: HTTP request can have very complex situations on cache control, we should determine it carefully and make it clear as possible
 
 ### Cache Validation Mechanism
 - **Problem**: Implementing proper cache validation with ETag.
@@ -35,6 +53,11 @@
 - **Problem**: Intermittent failures due to race conditions when multiple threads accessed the cache.
 - **Solution**: Added more granular locking and improved the thread safety of the Cache class.
 - **Lesson**: Race conditions can be difficult to reproduce and diagnose; thorough testing under load is essential. We literally had to add print statements everywhere and run the proxy lots of times to catch these issues.
+
+### Logging System
+- **Problem**: It is hard to debug multithreading programs. 
+- **Solution**: We set 4 different level for logging: `DEBUG`, `INFO`(proxy.log), `WARNING`, `ERROR`. The debug log will include all log.
+- **Lesson**: request id or thread id is important in multithreading debugging.
 
 ### Network Error Handling
 - **Problem**: Various network errors (timeouts, connection resets) caused the proxy to crash.
