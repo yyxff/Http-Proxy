@@ -12,3 +12,22 @@ services:
       - ./build:/app/build
     environment:
       - TZ=America/New_York
+    networks:
+      - my_network
+
+
+  swarm:
+    image: locustio/locust:latest
+    volumes:
+      - ./tests/locust/:/locust/
+    command: -f /locust/locust.py --host=http://httpbin.org/forms/post --users=100 --spawn-rate=10
+    ports:
+      - "8089:8089"
+    networks:
+      - my_network
+    depends_on:
+      - proxy
+
+networks:
+  my_network:
+    driver: bridge

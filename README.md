@@ -31,7 +31,7 @@ cd erss-hwk2-yy465-jh730
 cd docker-deploy
 
 # Build and start the container
-docker-compose up --build
+docker-compose up proxy --build
 
 # View logs
 docker-compose logs -f
@@ -102,6 +102,25 @@ python3 CacheServer.py
 - Chunked transfer encoding
 - Error handling
 - Concurrent requests
+
+## Concurrency Testing
+```bash
+cd docker-deploy
+
+sudo docker-compose up swarm --build
+
+# 1 access web ui
+
+# now locust test web ui should be on http://0.0.0.0:8089 on this machine.
+# if you are on the vm, you may need to forward post 8089 to your local machine.
+
+# 2 press start to use our default config
+
+# or configurate it by yourself
+# number of users (peak concurrency)
+# ramp up (users started per second)
+# host(target url)
+```
 
 ## Cache Control Coverage
 

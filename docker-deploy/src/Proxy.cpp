@@ -197,6 +197,7 @@ std::string Proxy::extract_host(const std::string& url) {
 
 std::string Proxy::build_get_request(const Request& request) {
     std::string url = request.getUrl();
+    // logger.debug(request.getId(),"url is "+request.getUrl());
     size_t pos = url.find("://");
     std::string path;
     

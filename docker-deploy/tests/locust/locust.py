@@ -5,10 +5,10 @@ class WebsiteUser(HttpUser):
 
     def on_start(self):
         self.client.proxies = {
-            "http": "http://localhost:12345",
-            "https": "http://localhost:12345",
+            "http": "http://proxy:12345",
+            "https": "http://proxy:12345",
         }
 
-    @task(4)
+    @task()
     def index(self):
-        self.client.get("/")  # four times for index visit
+        self.client.get("")  # visit the host url
