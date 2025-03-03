@@ -13,6 +13,7 @@
 #include "Parser.hpp"
 #include "CacheDecision.hpp"
 #include "CacheHandler.hpp"
+#include "CacheMaster.hpp"
 #include <condition_variable>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>

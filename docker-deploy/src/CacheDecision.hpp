@@ -4,6 +4,7 @@
 
 #include "Cache.hpp"
 #include "Request.hpp"
+#include "CacheMaster.hpp"
 #include <regex>
 #include <algorithm>
 #include <ctime>
