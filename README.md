@@ -55,25 +55,30 @@ The proxy is built with a modular design:
 docker-deploy/
 ├── src/
 │   ├── main.cpp                 # Entry point for the proxy server
-│   ├── proxy.cpp                # Main proxy implementation
-│   ├── proxy.h                  # Proxy class declaration
-│   ├── logger.cpp               # Logging functionality
-│   ├── logger.h                 # Logger class declaration
-│   ├── cache.cpp                # Cache implementation
-│   ├── cache.h                  # Cache class declaration
-│   ├── cache_decision.cpp       # Cache decision making logic
-│   ├── cache_decision.h         # CacheDecision class declaration
-│   ├── cache_handler.cpp        # Cache handling implementation
-│   ├── cache_handler.h          # CacheHandler class declaration
-│   ├── http_parser.cpp          # HTTP message parsing
-│   ├── http_parser.h            # HTTPParser class declaration
-│   └── utils.h                  # Utility functions and constants
+│   ├── Proxy.cpp                # Main proxy implementation
+│   ├── Proxy.hpp                # Proxy class declaration
+│   ├── Logger.cpp               # Logging functionality
+│   ├── Logger.hpp               # Logger class declaration
+│   ├── Cache.cpp                # Cache implementation
+│   ├── Cache.hpp                # Cache class declaration
+│   ├── CacheMaster.cpp          # Cache Master implementation
+│   ├── CacheMaster.hpp          # Cache Master class declaration
+│   ├── CacheEntry.cpp           # Cache Entry implementation
+│   ├── CacheEntry.hpp           # Cache Entry class declaration
+│   ├── CacheDecision.cpp        # Cache decision making logic
+│   ├── CacheDecision.hpp        # CacheDecision class declaration
+│   ├── CacheHandler.cpp         # Cache handling implementation
+│   ├── CacheHandler.hpp         # CacheHandler class declaration
+│   ├── Parser.cpp               # HTTP message parsing
+│   ├── Parser.hpp               # HTTPParser class declaration
+│   ├── CmakeList.txt            # compile file
+│   └── Dockerfile               # Dockerfile
 ├── tests/
 │   ├── test_proxy.cpp           # Comprehensive test suite
+│   ├── CacheServer.py           # simple server for cache test
+│   ├── run_tests.sh             # script to run tests
 │   └── CMakeLists.txt           # Test build configuration
-├── Dockerfile                   # Docker configuration
 ├── docker-compose.yml           # Docker Compose configuration
-├── CMakeLists.txt               # Build system configuration
 └── README.md                    # Project documentation
 ```
 
@@ -81,6 +86,9 @@ docker-deploy/
 The project includes a comprehensive test suite that verifies various aspects of the proxy:
 
 ```bash
+# install flask lib
+pip install flask
+
 # Build and run tests
 cd docker-deploy/tests
 python3 CacheServer.py
@@ -95,8 +103,25 @@ python3 CacheServer.py
 - Error handling
 - Concurrent requests
 
+## Cache Control Coverage
+
+### Request
+- no-store
+- no-cache
+- only-if-cached
+- max-age
+- min-fresh
+- max-stale
+
+### Response
+- no-store
+- no-cache
+- must-revalidate
+- private
+
 ## Design Decisions
 - **Thread-per-connection Model**: We chose this model for simplicity and isolation between connections.
+- **Segmentation-for-caches**: we segment caches into 8 pieces, every segment has their own mutex lock. So we can use different caches at same time. It is at most 8 times more efficient.
 - **Boost.Beast for HTTP Parsing**: Leveraging a robust library for HTTP parsing to handle the complexities of the protocol.
 - **Mutex-based Cache Synchronization**: Ensuring thread safety with fine-grained locks.
 - **Select-based I/O Multiplexing**: For efficient handling of CONNECT tunneling.

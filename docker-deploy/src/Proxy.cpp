@@ -128,7 +128,7 @@ void Proxy::handle_client(int client_fd) {
     logger.debug("received "+to_string(bytes_received)+" bytes from client "+to_string(client_fd));
     if (bytes_received <= 0) {
         if (bytes_received < 0) {
-            logger.error("Failed to receive request: " + std::string(strerror(errno)));
+            logger.debug("Failed to receive request: " + std::string(strerror(errno)));
         }
         close(client_fd);
         logger.debug("closed client fd: "+to_string(client_fd));
