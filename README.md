@@ -109,10 +109,12 @@ cd docker-deploy/tests
 ### cache behavior testing
 ```bash
 cd docker-deploy
-sudo docker-compose up tester --build
 
-# if you want to test it again, everytime before it, run:
+# before up, you may run this:
 sudo docker-compose down
+
+# start
+sudo docker-compose up tester --build
 ```
 
 ### Test Coverage
@@ -127,6 +129,10 @@ sudo docker-compose down
 ```bash
 cd docker-deploy
 
+# before up, you may run this:
+sudo docker-compose down
+
+# start
 sudo docker-compose up swarm --build
 
 # 1 access web ui
