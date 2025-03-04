@@ -14,9 +14,7 @@ services:
       - TZ=America/New_York
     networks:
       - my_network
-    command: sh -c "ulimit -c unlimited && 
-              cd /cores && 
-              mkdir -p /app/build && 
+    command: sh -c "mkdir -p /app/build && 
               cd /app/build && 
               cmake ../src && 
               make && ./proxy || sleep infinity"
@@ -37,6 +35,14 @@ services:
     command: -f /locust/locust.py --host=http://server:5000/swarm --users=100 --spawn-rate=10
     ports:
       - "8089:8089"
+    networks:
+      - my_network
+    depends_on:
+      - proxy
+      - server
+
+  tester:
+    build: ./tests
     networks:
       - my_network
     depends_on:

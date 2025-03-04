@@ -246,8 +246,8 @@ time_t Cache::parseExpiresTime(const string& response_headers) {
 }
 
 bool Cache::requiresRevalidation(const string& response_headers) {
-    return response_headers.find("Cache-Control: must-revalidate") != string::npos ||
-           response_headers.find("Cache-Control: no-cache") != string::npos;
+    return response_headers.find("must-revalidate") != string::npos ||
+           response_headers.find("no-cache") != string::npos;
 }
 
 string Cache::extractETag(const string& response_headers) {

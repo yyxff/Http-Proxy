@@ -34,6 +34,7 @@ def home():
 def cache():
     response = make_response("hello! I'm valid_cache!")
     response.headers['Cache-Control'] = 'max-age=60'  # set cache time to 60 seconds
+    response.headers['message'] = 'v1'
     # disable this path after first visit
     disabled_paths.add('/valid-cache')
     return response
@@ -41,43 +42,64 @@ def cache():
 
 # test2: revalid cache
 myEtag = "v1"
+message_revalid = "v1"
 visited_time = 0
 @app.route('/revalid-cache')
 def revalid_cache():
-    global visited_time, myEtag
+    global visited_time, myEtag, message_revalid
     visited_time += 1
     if visited_time > 2:
         myEtag = "v2"
+        message_revalid = "v2"
     response = make_response("hello! I'm revalid_cache!")
     response.set_etag(myEtag)
+    response.headers['message'] = message_revalid 
     
     if response.make_conditional(request):
         return response
 
     return response
 
+# test only if cached cache
+message_only_cached = "v1"
+@app.route('/cache/only-if-cached')
+def only_if_cached():
+    global message_only_cached
+    response = make_response("hello! I'm only_cached!")
+    response.headers['Cache-Control'] = 'public, max-age=3'
+    response.headers['message'] = message_only_cached
+    message_only_cached = "v2"
+    return response
+
 # test3 max-age cache
+message_max_age = "v1"
 @app.route('/cache/max-age')
 def max_age_cache():
+    global message_max_age
     response = make_response("hello! I'm max_age_cache!")
     response.headers['Cache-Control'] = 'public, max-age=3'
-
+    response.headers['message'] = message_max_age
+    message_max_age = "v2"
     return response
 
 @app.route('/cache/no-store')
 def cache_no_store():
     global message_no_store
     response = make_response("hello! I'm no-store!")
-    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Cache-Control'] = 'no-store, max-age=10'
     response.headers['message'] = message_no_store
     message_no_store = "v2"  # update message, so next request can verify if a new response is obtained
     return response
 
+message_min_fresh = "v1"
 @app.route('/cache/min-fresh')
 def cache_min_fresh():
+    global message_min_fresh
     response = make_response("hello! I'm min_fresh_cache!")
-    response.headers['Cache-Control'] = 'public, max-age=5'
+    response.headers['Cache-Control'] = 'max-age=5'
+    response.headers['message'] = message_min_fresh
     response.headers['X-Timestamp'] = str(time.time())
+    message_min_fresh = "v2"
     return response
 
 @app.route('/swarm')
@@ -92,7 +114,7 @@ message_max_stale = "v1"
 def cache_max_stale():
     global message_max_stale
     response = make_response("hello! I'm max-stale!")
-    response.headers['Cache-Control'] = 'public, max-age=2'
+    response.headers['Cache-Control'] = 'public, max-age=0'
     response.headers['message'] = message_max_stale
     message_max_stale = "v2"
     return response
@@ -121,8 +143,20 @@ def cache_must_revalidate():
     
     if request.headers.get('If-None-Match') == etag_must_revalidate:
         return response, 304
-    
+    etag_must_revalidate = "etag2"
     message_must_revalidate = "v2"
+    return response
+
+
+# test for response no-cache directive
+message_no_cache_res = "v1"
+@app.route('/cache/response-no-store')
+def cache_response_no_tore():
+    global message_no_cache_res
+    response = make_response("hello! I'm response-no-store!")
+    response.headers['Cache-Control'] = 'no-store, max-age=30'
+    response.headers['message'] = message_no_cache_res
+    message_no_cache_res = "v2"
     return response
 
 # start server

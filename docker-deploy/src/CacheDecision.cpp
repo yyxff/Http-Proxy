@@ -64,7 +64,7 @@ CacheDecision::Decision CacheDecision::makeDecision(const Request & request){
 CacheDecision::Decision CacheDecision::handle_max_age(const string & cacheControl, const CacheEntry * entry, int id){
     int max_age = parseTime(cacheControl, "max-age");
     int entryAge = entry->getAge();
-
+    logger.debug(id, "entryAge"+to_string(entryAge)+" max-age="+to_string(max_age));
     if (entryAge <= max_age){
         if (cacheControl.find("min-fresh") != string::npos){
             return handle_min_fresh(cacheControl, entry, id);

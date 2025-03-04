@@ -97,13 +97,22 @@ docker-deploy/
 ## Testing
 The project includes a comprehensive test suite that verifies various aspects of the proxy:
 
+> if you want to check details of behavior
+> 
+> you can check `./logs/proxy.log` and `./logs/DEBUG.log`
+### basic http testing
 ```bash
-# install flask lib
-pip install flask
-
 # Build and run tests
 cd docker-deploy/tests
 ./run_tests.sh
+```
+### cache behavior testing
+```bash
+cd docker-deploy
+sudo docker-compose up tester --build
+
+# if you want to test it again, everytime before it, run:
+sudo docker-compose down
 ```
 
 ### Test Coverage
@@ -123,7 +132,7 @@ sudo docker-compose up swarm --build
 # 1 access web ui
 
 # now locust test web ui should be on http://0.0.0.0:8089 on this machine.
-# if you are on the vm, you may need to forward post 8089 to your local machine.
+# if you are on VM, you may need to forward post 8089 to your local machine.
 
 # 2 press start to use our default config(visiting a simple server on this machine)
 
@@ -134,6 +143,8 @@ sudo docker-compose up swarm --build
 ```
 
 ## Cache Control Coverage
+
+> defaultly cache reponse for 1 hour
 
 ### Request
 - no-store
