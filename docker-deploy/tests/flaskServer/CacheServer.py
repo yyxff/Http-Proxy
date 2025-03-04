@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, Response, make_response
+import time
 
 # create app
 app = Flask(__name__)
@@ -23,8 +24,8 @@ def check_disabled_routes():
 @app.route('/')
 def home():
     global disabled_paths, message_no_store
-    disabled_paths.clear()  # 访问根路径时重置状态
-    message_no_store = "v1"  # 重置 message_no_store 变量
+    disabled_paths.clear()  # reset state when visiting root path
+    message_no_store = "v1"  # reset message_no_store variable
     return "welcome to simple test server!"
 
 
@@ -72,9 +73,29 @@ def cache_no_store():
     message_no_store = "v2"  # update message, so next request can verify if a new response is obtained
     return response
 
+@app.route('/cache/min-fresh')
+def cache_min_fresh():
+    response = make_response("hello! I'm min_fresh_cache!")
+    response.headers['Cache-Control'] = 'public, max-age=5'
+    response.headers['X-Timestamp'] = str(time.time())
+    return response
+
 @app.route('/swarm')
 def swarm():
     return "welcome to simple swarm server!"
+
+# test 18 max-stale
+# first return v1
+# after return v2
+message_max_stale = "v1"
+@app.route('/cache/max-stale')
+def cache_max_stale():
+    global message_max_stale
+    response = make_response("hello! I'm max-stale!")
+    response.headers['Cache-Control'] = 'public, max-age=2'
+    response.headers['message'] = message_max_stale
+    message_max_stale = "v2"
+    return response
 
 # start server
 if __name__ == '__main__':
