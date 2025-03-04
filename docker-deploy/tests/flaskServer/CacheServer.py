@@ -97,6 +97,34 @@ def cache_max_stale():
     message_max_stale = "v2"
     return response
 
+# test for response no-cache directive
+message_no_cache = "v1"
+@app.route('/cache/response-no-cache')
+def cache_response_no_cache():
+    global message_no_cache
+    response = make_response("hello! I'm response-no-cache!")
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['message'] = message_no_cache
+    message_no_cache = "v2"
+    return response
+
+# test for response must-revalidate directive
+message_must_revalidate = "v1"
+etag_must_revalidate = "etag1"
+@app.route('/cache/must-revalidate')
+def cache_must_revalidate():
+    global message_must_revalidate, etag_must_revalidate
+    response = make_response("hello! I'm must-revalidate!")
+    response.headers['Cache-Control'] = 'public, max-age=2, must-revalidate'
+    response.headers['message'] = message_must_revalidate
+    response.set_etag(etag_must_revalidate)
+    
+    if request.headers.get('If-None-Match') == etag_must_revalidate:
+        return response, 304
+    
+    message_must_revalidate = "v2"
+    return response
+
 # start server
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

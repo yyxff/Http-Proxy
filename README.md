@@ -147,6 +147,7 @@ sudo docker-compose up swarm --build
 - no-store
 - no-cache
 - must-revalidate
+- max-age
 - private
 
 ## Design Decisions
