@@ -1098,6 +1098,276 @@ TEST_F(ProxyTest, TestConcurrentRequests) {
     std::cout << "=== Completed TestConcurrentRequests ===" << std::endl;
 }
 
+// ============== Test #14: No-Store Directive ==============
+TEST_F(ProxyTest, TestNoStore) {
+    std::cout << "\n=== Starting TestNoStore ===" << std::endl;
+    
+    try {
+        // Reset CacheServer state
+        int reset_sock = create_client_socket();
+        std::string reset_request = 
+            "GET http://127.0.0.1:5000/ HTTP/1.1\r\n"
+            "Host: 127.0.0.1:5000\r\n"
+            "Connection: close\r\n\r\n";
+        
+        send(reset_sock, reset_request.c_str(), reset_request.size(), 0);
+        char buffer[4096];
+        while (recv(reset_sock, buffer, sizeof(buffer) - 1, 0) > 0) {}
+        close(reset_sock);
+        
+        // First request to get the resource with no-store directive
+        int client_sock = create_client_socket();
+        std::string get_request = 
+            "GET http://127.0.0.1:5000/cache/no-store HTTP/1.1\r\n"
+            "Host: 127.0.0.1:5000\r\n"
+            "Connection: close\r\n\r\n";
+        
+        ssize_t sent = send(client_sock, get_request.c_str(), get_request.size(), 0);
+        EXPECT_EQ(sent, static_cast<ssize_t>(get_request.size())) << "First GET request not fully sent.";
+
+        // Set receive timeout
+        struct timeval tv;
+        tv.tv_sec = 5;
+        tv.tv_usec = 0;
+        setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
+        // Read first response
+        std::string first_response;
+        while (true) {
+            ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+            if (received <= 0) break;
+            
+            buffer[received] = '\0';
+            first_response.append(buffer, received);
+        }
+        
+        std::cout << "First response:\n" << first_response << std::endl;
+        
+        // Check if first response is 200 OK
+        EXPECT_TRUE(first_response.find("HTTP/1.1 200 OK") != std::string::npos) 
+            << "First response status is not 200 OK";
+        
+        // Check if response contains expected content
+        EXPECT_TRUE(first_response.find("hello! I'm no-store!") != std::string::npos)
+            << "First response does not contain expected content";
+        
+        // Check if response contains message header with v1
+        EXPECT_TRUE(first_response.find("message: v1") != std::string::npos)
+            << "First response does not contain expected message header";
+        
+        // Check if response contains no-store directive
+        EXPECT_TRUE(first_response.find("Cache-Control: no-store") != std::string::npos)
+            << "First response does not contain no-store directive";
+        
+        close(client_sock);
+        
+        // Wait a moment
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        
+        // Second request - should get a fresh response with v2 in message header
+        // If the proxy incorrectly cached the response despite no-store directive,
+        // we would still see v1 in the message header
+        std::cout << "Sending second request to verify no caching occurred..." << std::endl;
+        client_sock = create_client_socket();
+        
+        sent = send(client_sock, get_request.c_str(), get_request.size(), 0);
+        EXPECT_EQ(sent, static_cast<ssize_t>(get_request.size())) << "Second GET request not fully sent.";
+        
+        // Read second response
+        std::string second_response;
+        while (true) {
+            ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+            if (received <= 0) break;
+            
+            buffer[received] = '\0';
+            second_response.append(buffer, received);
+        }
+        
+        std::cout << "Second response:\n" << second_response << std::endl;
+        
+        // Check if second response is 200 OK
+        EXPECT_TRUE(second_response.find("HTTP/1.1 200 OK") != std::string::npos) 
+            << "Second response status is not 200 OK";
+        
+        // Check if second response contains message header with v2
+        // This verifies we got a fresh response, not a cached one
+        EXPECT_TRUE(second_response.find("message: v2") != std::string::npos) 
+            << "Second response does not contain updated message header (v2), suggesting incorrect caching";
+        
+        close(client_sock);
+    }
+    catch (const std::exception &e) {
+        FAIL() << "Exception in TestNoStore: " << e.what();
+    }
+    
+    std::cout << "=== Completed TestNoStore ===" << std::endl;
+}
+
+// ============== Test #15: Max-Age Cache Control ==============
+TEST_F(ProxyTest, TestMaxAge) {
+    std::cout << "\n=== Starting TestMaxAge ===" << std::endl;
+    
+    try {
+        // Reset CacheServer state
+        int reset_sock = create_client_socket();
+        std::string reset_request = 
+            "GET http://127.0.0.1:5000/ HTTP/1.1\r\n"
+            "Host: 127.0.0.1:5000\r\n"
+            "Connection: close\r\n\r\n";
+        
+        send(reset_sock, reset_request.c_str(), reset_request.size(), 0);
+        char buffer[4096];
+        while (recv(reset_sock, buffer, sizeof(buffer) - 1, 0) > 0) {}
+        close(reset_sock);
+        
+        // First request to get the resource with max-age=3
+        int client_sock = create_client_socket();
+        std::string get_request = 
+            "GET http://127.0.0.1:5000/cache/max-age HTTP/1.1\r\n"
+            "Host: 127.0.0.1:5000\r\n"
+            "Connection: close\r\n\r\n";
+        
+        ssize_t sent = send(client_sock, get_request.c_str(), get_request.size(), 0);
+        EXPECT_EQ(sent, static_cast<ssize_t>(get_request.size())) << "First GET request not fully sent.";
+
+        // Set receive timeout
+        struct timeval tv;
+        tv.tv_sec = 5;
+        tv.tv_usec = 0;
+        setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
+        // Read first response
+        std::string first_response;
+        while (true) {
+            ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+            if (received <= 0) break;
+            
+            buffer[received] = '\0';
+            first_response.append(buffer, received);
+        }
+        
+        std::cout << "First response:\n" << first_response << std::endl;
+        
+        // Check if first response is 200 OK
+        EXPECT_TRUE(first_response.find("HTTP/1.1 200 OK") != std::string::npos) 
+            << "First response status is not 200 OK";
+        
+        // Check if response contains expected content
+        EXPECT_TRUE(first_response.find("hello! I'm max_age_cache!") != std::string::npos)
+            << "First response does not contain expected content";
+        
+        // Check if response contains max-age directive
+        EXPECT_TRUE(first_response.find("Cache-Control: public, max-age=3") != std::string::npos)
+            << "First response does not contain max-age directive";
+        
+        close(client_sock);
+        
+        // Extract Date header from first response for comparison
+        std::string first_date;
+        size_t date_pos = first_response.find("Date: ");
+        if (date_pos != std::string::npos) {
+            size_t date_end = first_response.find("\r\n", date_pos);
+            if (date_end != std::string::npos) {
+                first_date = first_response.substr(date_pos, date_end - date_pos);
+                std::cout << "First response date: " << first_date << std::endl;
+            }
+        }
+        
+        // Wait a moment (less than max-age)
+        std::cout << "Waiting 1 second (within max-age period)..." << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        
+        // Second request - should be served from cache
+        std::cout << "Sending second request (should be served from cache)..." << std::endl;
+        client_sock = create_client_socket();
+        
+        sent = send(client_sock, get_request.c_str(), get_request.size(), 0);
+        EXPECT_EQ(sent, static_cast<ssize_t>(get_request.size())) << "Second GET request not fully sent.";
+        
+        // Read second response
+        std::string second_response;
+        while (true) {
+            ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+            if (received <= 0) break;
+            
+            buffer[received] = '\0';
+            second_response.append(buffer, received);
+        }
+        
+        std::cout << "Second response:\n" << second_response << std::endl;
+        
+        // Check if second response is 200 OK
+        EXPECT_TRUE(second_response.find("HTTP/1.1 200 OK") != std::string::npos) 
+            << "Second response status is not 200 OK";
+        
+        // Extract Date header from second response
+        std::string second_date;
+        date_pos = second_response.find("Date: ");
+        if (date_pos != std::string::npos) {
+            size_t date_end = second_response.find("\r\n", date_pos);
+            if (date_end != std::string::npos) {
+                second_date = second_response.substr(date_pos, date_end - date_pos);
+                std::cout << "Second response date: " << second_date << std::endl;
+            }
+        }
+        
+        // If response is served from cache, the Date header should be the same
+        EXPECT_EQ(first_date, second_date) 
+            << "Date headers are different, suggesting response was not served from cache";
+        
+        close(client_sock);
+        
+        // Wait for cache to expire (max-age=3)
+        std::cout << "Waiting 4 seconds for cache to expire..." << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(4));
+        
+        // Third request - should get a fresh response
+        std::cout << "Sending third request (should get fresh response)..." << std::endl;
+        client_sock = create_client_socket();
+        
+        sent = send(client_sock, get_request.c_str(), get_request.size(), 0);
+        EXPECT_EQ(sent, static_cast<ssize_t>(get_request.size())) << "Third GET request not fully sent.";
+        
+        // Read third response
+        std::string third_response;
+        while (true) {
+            ssize_t received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+            if (received <= 0) break;
+            
+            buffer[received] = '\0';
+            third_response.append(buffer, received);
+        }
+        
+        std::cout << "Third response:\n" << third_response << std::endl;
+        
+        // Check if third response is 200 OK
+        EXPECT_TRUE(third_response.find("HTTP/1.1 200 OK") != std::string::npos) 
+            << "Third response status is not 200 OK";
+        
+        // Extract Date header from third response
+        std::string third_date;
+        date_pos = third_response.find("Date: ");
+        if (date_pos != std::string::npos) {
+            size_t date_end = third_response.find("\r\n", date_pos);
+            if (date_end != std::string::npos) {
+                third_date = third_response.substr(date_pos, date_end - date_pos);
+                std::cout << "Third response date: " << third_date << std::endl;
+            }
+        }
+        
+        // If cache expired, the Date header should be different from the second response
+        EXPECT_NE(second_date, third_date) 
+            << "Date headers are identical, suggesting response was incorrectly served from cache after expiration";
+        
+        close(client_sock);
+    }
+    catch (const std::exception &e) {
+        FAIL() << "Exception in TestMaxAge: " << e.what();
+    }
+    
+    std::cout << "=== Completed TestMaxAge ===" << std::endl;
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

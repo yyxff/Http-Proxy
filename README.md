@@ -103,7 +103,6 @@ pip install flask
 
 # Build and run tests
 cd docker-deploy/tests
-python3 CacheServer.py
 ./run_tests.sh
 ```
 
