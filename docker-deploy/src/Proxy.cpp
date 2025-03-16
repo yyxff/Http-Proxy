@@ -19,15 +19,16 @@ Proxy::Proxy(int port) :
     listen_fd(-1), 
     port(port), 
     logger(Logger::getInstance()),
+    threadpool(ThreadPool(8,32)),
     running(false),
     shutdown_requested(false) {}
 
 Proxy::~Proxy() {
-    for (auto& thread : threads) {
-        if (thread.joinable()) {
-            thread.join();
-        }
-    }
+    // for (auto& thread : threads) {
+    //     if (thread.joinable()) {
+    //         thread.join();
+    //     }
+    // }
     if (listen_fd >= 0) {
         close(listen_fd);
         logger.debug("closed server fd: "+to_string(listen_fd));
@@ -103,7 +104,14 @@ void Proxy::start_accepting() {
 
         {
             std::lock_guard<std::mutex> lock(thread_mutex);
-            threads.emplace_back(&Proxy::client_thread, this, client_fd);
+            // threads.emplace_back(&Proxy::client_thread, this, client_fd);
+            threadpool.enqueue([this, client_fd](){Proxy::client_thread(this, client_fd);});
+            auto status = threadpool.get_status();
+            logger.debug("=== 线程池状态 ==="\
+              "\n总线程数: " + to_string(status.total_threads)
+              + "\n空闲线程: " + to_string(status.idle_threads)
+              + "\n等待任务: " + to_string(status.pending_tasks)
+              + "\n=================");
         }
     }
     
@@ -589,15 +597,15 @@ void Proxy::stop() {
     }
 
     // Wait for all client threads with timeout
-    {
-        std::lock_guard<std::mutex> lock(thread_mutex);
-        for (auto& thread : threads) {
-            if (thread.joinable()) {
-                thread.join();
-            }
-        }
-        threads.clear();
-    }
+    // {
+    //     std::lock_guard<std::mutex> lock(thread_mutex);
+    //     for (auto& thread : threads) {
+    //         if (thread.joinable()) {
+    //             thread.join();
+    //         }
+    //     }
+    //     threads.clear();
+    // }
 
     logger.info("Proxy shutdown complete");
 }

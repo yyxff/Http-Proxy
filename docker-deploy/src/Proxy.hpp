@@ -14,6 +14,7 @@
 #include "CacheDecision.hpp"
 #include "CacheHandler.hpp"
 #include "CacheMaster.hpp"
+#include "ThreadPool.cpp"
 #include <condition_variable>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
@@ -96,10 +97,12 @@ private:
     int port;
     Logger& logger;
     bool running;
-    std::vector<std::thread> threads;
+    // std::vector<std::thread> threads;
     std::mutex thread_mutex;
     std::condition_variable shutdown_cv;
     bool shutdown_requested;
+
+    ThreadPool threadpool;
 };
 
 #endif
