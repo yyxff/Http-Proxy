@@ -25,7 +25,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: src/Dockerfile  # 指定Dockerfile路径
+          file: docker-deploy/src/Dockerfile  # 指定Dockerfile路径
           platforms: linux/amd64
           push: true
           tags: |
