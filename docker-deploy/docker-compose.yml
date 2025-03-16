@@ -2,9 +2,10 @@ version: '3'
 
 services:
   proxy:
-    build:
-      context: .
-      dockerfile: ./src/Dockerfile
+    # build:
+    #   context: .
+    #   dockerfile: ./src/Dockerfile
+    image: ghcr.io/yyxff/proxy:latest
     ports:
       - "12345:12345"
     volumes:
