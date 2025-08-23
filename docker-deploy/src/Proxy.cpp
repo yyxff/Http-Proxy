@@ -4,6 +4,7 @@
 #include <netdb.h>
 #include <cstring>
 #include <sys/select.h>
+#include <sys/epoll.h>
 #include <arpa/inet.h>
 #include <algorithm>
 #include <ctime>
@@ -48,6 +49,7 @@ void Proxy::setup_server() {
         throw std::runtime_error("Failed to create socket");
     }
 
+    // Ignore TIME_WAIT of this connection
     int opt = 1;
     if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
         throw std::runtime_error("Failed to set socket options");
@@ -74,10 +76,74 @@ void Proxy::setup_server() {
     if (listen(listen_fd, 10) < 0) {
         throw std::runtime_error("Failed to listen");
     }
+
+    // Set it to non-blocking
+    int flags = fcntl(listen_fd, F_GETFL, 0);
+    if (flags == -1) return -1;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
     running = true;
     logger.info("successfully set up server on port " + std::to_string(port));
 }
 
+// Init epoll fd and add listen fd
+int Proxy::init_epoll(int listen_fd) {
+    // Create epoll fd
+    int epfd = epoll_create1(0);
+    if (epfd < 0) {
+        perror("Failed to create epoll fd");
+        return -1;
+    }
+
+    // Add listen fd to epoll event
+    epoll_event ev{};
+    ev.events = EPOLLIN;
+    ev.data.fd = listen_fd;
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, listen_fd, &ev) < 0) {
+        perror("epoll_ctl: listen_fd");
+        return -1;
+    }
+
+    logger.info("successfully init epoll fd:" + std::to_string(epfd));
+    return epfd;
+}
+
+// Start waiting on epoll
+void Proxy::wait_on_epoll() {
+    std::vector<epoll_event> events(MAX_EVENTS);
+
+    while (1) {
+        int n = epoll_wait(epfd, events.data(), MAX_EVENTS, -1);
+        for (int i = 0; i < n; ++i) {
+            int fd = events[i].data.fd;
+
+            if (fd == listen_fd) {
+                // Get fd of new connection
+                sockaddr_in client_addr;
+                socklen_t client_len = sizeof(client_addr);
+                int conn_fd = accept(fd, (sockaddr *)&client_addr, &client_len);
+                if (conn_fd < 0) {
+                    perror("Failed to accept new connection");
+                    continue;
+                }
+
+                // TODO: set fd to non-blocking
+
+                // Add this fd to epoll event
+                epoll_event conn_ev{};
+                conn_ev.events = EPOLLIN | EPOLLET;  // edge-trrigered
+                conn_ev.data.fd = conn_fd;
+                if (epoll_ctl(epfd, EPOLL_CTL_ADD, conn_fd, &conn_ev) < 0) {
+                    perror("epoll_ctl: conn_fd");
+                    close(conn_fd);
+                    continue;
+                }
+            } else if (events[i].events & EPOLLIN) {
+                // TODO: handle event
+            }
+        }
+    }
+}
 void Proxy::start_accepting() {
     while(running) {
         struct sockaddr_in client_addr;
