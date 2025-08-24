@@ -43,6 +43,10 @@ public:
 private:
     // Setup server socket
     void setup_server();
+
+    int init_epoll(int listen_fd);
+
+    void wait_on_epoll(int epfd);
     
     // Accept client connections
     void start_accepting();

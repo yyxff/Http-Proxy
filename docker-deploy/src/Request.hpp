@@ -30,8 +30,8 @@ public:
 
     int getId() const { return id; }
     
-    std::string getMethod() const { return request.method_string().to_string(); }
-    std::string getUrl() const { return request.target().to_string(); }
+    std::string getMethod() const { return std::string(request.method_string()); }
+    std::string getUrl() const { return std::string(request.target()); }
     std::string getVersion() const { 
         return "HTTP/" 
         + std::to_string(request.version() / 10) 

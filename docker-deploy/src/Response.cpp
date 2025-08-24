@@ -10,5 +10,5 @@ namespace asio = boost::asio;
 
 std::string Response::getHeader(const std::string& key) const {
     auto it = headers.find(key);
-    return (it != headers.end()) ? it->value().to_string() : "";
+    return (it != headers.end()) ? std::string(it->value()) : "";
 }

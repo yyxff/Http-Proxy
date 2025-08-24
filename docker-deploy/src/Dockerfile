@@ -10,10 +10,10 @@ RUN apt-get update && \
 WORKDIR /app
 COPY ./src /app/src
 
-RUN mkdir build && \
-    cd build && \
-    cmake ../src && \
-    make
+# RUN mkdir build && \
+#     cd build && \
+#     cmake ../src && \
+#     make
 
 RUN mkdir -p /var/log/erss && \
     chmod 777 /var/log/erss

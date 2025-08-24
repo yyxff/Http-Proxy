@@ -2,10 +2,11 @@ version: '3'
 
 services:
   proxy:
-    # build:
-    #   context: .
-    #   dockerfile: ./src/Dockerfile
-    image: ghcr.io/yyxff/proxy:latest
+    build:
+      context: .
+      dockerfile: ./src/Dockerfile
+    # image: ghcr.io/yyxff/proxy:latest
+    container_name: proxy-server-dev
     ports:
       - "12345:12345"
     volumes:
@@ -15,10 +16,10 @@ services:
       - TZ=America/New_York
     networks:
       - my_network
-    # command: sh -c "mkdir -p /app/build && 
-    #           cd /app/build && 
-    #           cmake ../src && 
-    #           make && ./proxy || sleep infinity"
+    command: sh -c "mkdir -p /app/build && 
+              cd /app/build && 
+              cmake ../src && 
+              make && ./proxy || sleep infinity"
 
 
 

@@ -11,5 +11,5 @@ std::atomic<int> Request::next_id(0);
 
 std::string Request::getHeader(const std::string& key) const {
     auto it = headers.find(key);
-    return (it != headers.end()) ? it->value().to_string() : "";
+    return (it != headers.end()) ? std::string(it->value()) : "";
 }

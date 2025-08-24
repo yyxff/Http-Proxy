@@ -16,6 +16,8 @@ namespace beast = boost::beast;
 namespace http = boost::beast::http;
 namespace asio = boost::asio;
 
+constexpr int MAX_EVENTS = 1024;
+
 Proxy::Proxy(int port) : 
     listen_fd(-1), 
     port(port), 
@@ -38,7 +40,9 @@ Proxy::~Proxy() {
 
 void Proxy::run() {
     setup_server();
-    start_accepting();
+    // start_accepting();
+    int epfd = init_epoll(listen_fd);
+    wait_on_epoll(epfd);
 }
 
 // Setup server socket with proper configurations
@@ -79,8 +83,8 @@ void Proxy::setup_server() {
 
     // Set it to non-blocking
     int flags = fcntl(listen_fd, F_GETFL, 0);
-    if (flags == -1) return -1;
-    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    if (flags == -1) return ;
+    fcntl(listen_fd, F_SETFL, flags | O_NONBLOCK);
 
     running = true;
     logger.info("successfully set up server on port " + std::to_string(port));
@@ -109,7 +113,7 @@ int Proxy::init_epoll(int listen_fd) {
 }
 
 // Start waiting on epoll
-void Proxy::wait_on_epoll() {
+void Proxy::wait_on_epoll(int epfd) {
     std::vector<epoll_event> events(MAX_EVENTS);
 
     while (1) {
@@ -127,7 +131,10 @@ void Proxy::wait_on_epoll() {
                     continue;
                 }
 
-                // TODO: set fd to non-blocking
+                // Set fd to non-blocking
+                int flags = fcntl(conn_fd, F_GETFL, 0);
+                if (flags == -1) return;
+                fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
                 // Add this fd to epoll event
                 epoll_event conn_ev{};
@@ -139,7 +146,8 @@ void Proxy::wait_on_epoll() {
                     continue;
                 }
             } else if (events[i].events & EPOLLIN) {
-                // TODO: handle event
+                // Dispatch task to thread pool
+                threadpool.enqueue([this, fd](){Proxy::client_thread(this, fd);});
             }
         }
     }
@@ -395,14 +403,14 @@ std::string Proxy::build_post_request(const Request& request) {
     
     // copy all original headers, but skip Host and Connection
     for (const auto& header : request.getHeaders()) {
-        logger.debug(header.name_string().to_string()+to_string(header.name_string().to_string() != "Host"));
-        if (header.name_string().to_string() != "Host" && header.name_string().to_string() != "Connection") {
-            logger.debug(header.name_string().to_string());
-            req += header.name_string().to_string() + ": " + header.value().to_string() + "\r\n";
-            if (header.name_string().to_string() == "Content-Length") {
+        logger.debug(std::string(header.name_string())+to_string(std::string(header.name_string()) != "Host"));
+        if (std::string(header.name_string()) != "Host" && std::string(header.name_string()) != "Connection") {
+            logger.debug(std::string(header.name_string()));
+            req += std::string(header.name_string()) + ": " + std::string(header.value()) + "\r\n";
+            if (std::string(header.name_string()) == "Content-Length") {
                 has_content_length = true;
             }
-            if (header.name_string().to_string() == "Content-Type") {
+            if (std::string(header.name_string()) == "Content-Type") {
                 has_content_type = true;
             }
         }
