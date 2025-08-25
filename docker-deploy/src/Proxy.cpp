@@ -145,6 +145,7 @@ void Proxy::wait_on_epoll(int epfd) {
                     Conn* conn = new Conn{};
                     conn->client_fd = conn_fd;
                     conn->server_fd = -1;
+                    conn->https = false;
                     fd_to_conn[conn_fd] = conn;
                 }
                 logger.debug("Add new client fd:" + to_string(conn_fd));
@@ -155,9 +156,13 @@ void Proxy::wait_on_epoll(int epfd) {
                 // 1. Check fd 
                 // 2. disable fd from epoll
                 // 3. Dispatch task to thread pool
-                auto it = fd_to_conn.find(fd);
-                if (it == fd_to_conn.end()){
-                    logger.error("fd:" + to_string(fd) + " not found in fd map");
+                {
+                    std::lock_guard<std::mutex> lock(fd_map_mtx);
+                    auto it = fd_to_conn.find(fd);
+                    if (it == fd_to_conn.end()){
+                        logger.error("fd:" + to_string(fd) + " not found in fd map");
+                        continue;
+                    } 
                 }
                 Conn * conn = fd_to_conn.find(fd)->second;
 
@@ -165,11 +170,11 @@ void Proxy::wait_on_epoll(int epfd) {
 
                 // If is client fd
                 if (fd == conn->client_fd){
-                    threadpool.enqueue([this, fd](){Proxy::client_thread(this, fd, fd_map_mtx);});
                     logger.debug("Dispatch a client fd:" + to_string(fd) + " to worker thread");
+                    threadpool.enqueue([this, fd](){Proxy::client_thread(this, fd);});
                 } else { // If is server fd
-                    threadpool.enqueue([this, fd](){Proxy::server_thread(this, fd);});
                     logger.debug("Dispatch a server fd:" + to_string(fd) + " to worker thread");
+                    threadpool.enqueue([this, fd](){Proxy::server_thread(this, fd);});
                 }
                 auto status = threadpool.get_status();
                 logger.debug("=== 线程池状态 ==="\
@@ -201,14 +206,20 @@ void Proxy::disable_fd(int fd) {
 
 // enable fd on epoll
 void Proxy::enable_fd(int fd) {
+    std::lock_guard<std::mutex> lock(fd_map_mtx);
+    auto it = fd_to_conn.find(fd);
+    if (it == fd_to_conn.end()) {
+        return;
+    }
+
     struct epoll_event ev;
     ev.events = EPOLLIN | EPOLLET;
     ev.data.fd = fd;
     epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
 }
 
-void Proxy::client_thread(Proxy* proxy, int client_fd, std::mutex & fd_map_mtx) {
-    proxy->handle_client(client_fd, fd_map_mtx);
+void Proxy::client_thread(Proxy* proxy, int client_fd) {
+    proxy->handle_client(client_fd);
     // logger.debug("handle client fd "+to_string(client_fd));
     proxy->enable_fd(client_fd);
 }
@@ -220,8 +231,20 @@ void Proxy::server_thread(Proxy* proxy, int server_fd) {
 }
 
 // Main request handler - parses request and routes to appropriate handler
-void Proxy::handle_client(int client_fd, std::mutex & fd_map_mtx) {
+void Proxy::handle_client(int client_fd) {
     logger.debug("handle client fd "+to_string(client_fd));
+
+    Conn * conn = get_conn(client_fd);
+    if (conn == NULL) {
+        return;
+    }
+    // If https, just forward
+    if (conn->https == true) {
+        forward(conn->client_fd, conn->server_fd);
+        return;
+    }
+
+    // If http, parse the content
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);
     getpeername(client_fd, (struct sockaddr *)&addr, &addr_len);
@@ -234,14 +257,14 @@ void Proxy::handle_client(int client_fd, std::mutex & fd_map_mtx) {
         if (bytes_received < 0) {
             logger.debug("Failed to receive request: " + std::string(strerror(errno)));
         }
-        close(client_fd);
+        close_fd(client_fd);
         logger.debug("closed client fd: "+to_string(client_fd));
         return;
     }
     
-    Request request;
-    Conn * conn = get_conn(client_fd);
+    
     // parse buffer to request
+    Request request = conn->request;
     try{
         Parser parser;
         conn->request = parser.parseRequest(buffer);
@@ -290,60 +313,69 @@ void Proxy::handle_client(int client_fd, std::mutex & fd_map_mtx) {
 
 void Proxy::handle_server(int server_fd){
     Conn * conn = get_conn(server_fd);
+    if (conn == NULL) {
+        return;
+    }
     int client_fd = conn->client_fd;
     const Request & request = conn->request;
+
+    // If https, just forward
+    if (conn->https == true) {
+        forward(conn->server_fd, conn->client_fd);
+        return;
+    }
     
+    // If http, parse content to cache
     try{
         // receive full response from server
         std::string full_response = receive(server_fd, request.getId());
-
-        Parser parser;
-        Response response = parser.parseResponse(vector<char>(full_response.begin(),full_response.end()));
-
         std::string host = extract_host(request.getUrl());
-        logger.debug("url:" + request.getUrl());
-        logger.info(request.getId(), "Received \""+response.getFirstLine()+"\" from "+host);
-
+        
         // if ok, send response to client
         if (!full_response.empty()) {
             logger.debug(request.getId(), "From " + host);
             send_all(client_fd, full_response, request.getId());
-            logger.info(request.getId(), "Responding \""+response.getFirstLine()+"\"");
         } else {
             throw std::runtime_error("Empty response from server");
         }
-
-
+        
+        // Parse message
+        Parser parser;
+        Response response = parser.parseResponse(vector<char>(full_response.begin(),full_response.end()));
+        logger.info(request.getId(), "Received \""+response.getFirstLine()+"\" from "+host);
+        logger.info(request.getId(), "Responding \""+response.getFirstLine()+"\"");
+        
         // cache it if ok
-        if (request.getMethod() == "GET"){
-            if (Cache::isCacheable(response)){
-                logger.debug(request.getId(), "response cacheable");
-                // Cache & cache = Cache::getInstance();
-                Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
-                CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
-                logger.debug(request.getId(),"try to cache: "+request.getUrl()+" to cache "+to_string(CacheMaster::getInstance().selectIndex(request.getUrl())));
-                cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());
-                if (cacheEntry.needsRevalidation()){
-                    logger.info(request.getId(), "cached, but requires re-validation");
-                }else{
-                    logger.info(request.getId(), "cached, expires at "+cacheEntry.getExpiresTimeStr());
-                }
-                
-            }else if (response.getResult() != 200){
-                logger.info(request.getId(), "not cacheable because response result is "+to_string(response.getResult()));
-            }else {
-                logger.info(request.getId(), "not cacheable because response cache control contains \"no-store\" or \"private\"");
+        if (request.getMethod() != "GET"){
+            return;
+        }
+        if (Cache::isCacheable(response)){
+            logger.debug(request.getId(), "response cacheable");
+            // Cache & cache = Cache::getInstance();
+            Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
+            CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
+            logger.debug(request.getId(),"try to cache: "+request.getUrl()+" to cache "+to_string(CacheMaster::getInstance().selectIndex(request.getUrl())));
+            cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());
+            if (cacheEntry.needsRevalidation()){
+                logger.info(request.getId(), "cached, but requires re-validation");
+            }else{
+                logger.info(request.getId(), "cached, expires at "+cacheEntry.getExpiresTimeStr());
             }
+            
+        }else if (response.getResult() != 200){
+            logger.info(request.getId(), "not cacheable because response result is "+to_string(response.getResult()));
+        }else {
+            logger.info(request.getId(), "not cacheable because response cache control contains \"no-store\" or \"private\"");
         }
     } catch (const std::exception& e) {
         logger.error(request.getId(), "ERROR in handle_get: " + std::string(e.what()));
         std::string error_response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
         send(client_fd, error_response.c_str(), error_response.length(), 0);
         logger.error(request.getId(), "Responding \"HTTP/1.1 502 Bad Gateway\"");
+        // close it
+        close_fd(server_fd);
+        logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
     }
-    // close it
-    close_fd(server_fd);
-    logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
 }
 
 // close fd
@@ -356,9 +388,60 @@ void Proxy::close_fd(int fd){
 
 Conn * Proxy::get_conn(int fd){
     std::lock_guard<std::mutex> lk(fd_map_mtx);
-    return fd_to_conn[fd];
+    auto it = fd_to_conn.find(fd);
+    if (it == fd_to_conn.end()) return nullptr;
+    return it->second;
 }
 
+ssize_t Proxy::forward(int from_fd, int to_fd) {
+    constexpr size_t BUF_SIZE = 4096;
+    std::vector<char> buffer(BUF_SIZE);
+    ssize_t total = 0;
+
+    while (true) {
+        ssize_t n = read(from_fd, buffer.data(), BUF_SIZE);
+        // logger.debug("read " + to_string(n) + " bytes");
+        if (n > 0) {
+            total += n;
+
+            ssize_t written = 0;
+            while (written < n) {
+                ssize_t w = write(to_fd, buffer.data() + written, n - written);
+                // logger.debug("write " + to_string(n) + " bytes");
+                if (w < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        // 非阻塞写满了，稍后再写
+                        continue;
+                    } else {
+                        perror("write");
+                        return -1;
+                    }
+                }
+                written += w;
+            }
+        } else if (n == 0) {
+            // EOF
+            disable_fd(from_fd);
+            disable_fd(to_fd);
+            close_fd(from_fd);
+            close_fd(to_fd);
+            logger.debug("Tunnel between " + to_string(from_fd) + " - " + to_string(to_fd) + " closed");
+            break;
+        } else {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // 没有更多可读数据
+                break;
+            } else if (errno == EINTR) {
+                continue; // 被信号打断，重试
+            } else {
+                perror("read");
+                return -1;
+            }
+        }
+    }
+
+    return total;
+}
 // from URL
 std::string Proxy::extract_host(const std::string& url) {
     std::string host = url;
@@ -614,6 +697,18 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
         server_fd = connect_to_server(host, port);
         logger.debug(request.getId(), "Successfully connected to destination server " + host + ":" + std::to_string(port)+" on fd "+to_string(server_fd));
 
+        // Add server fd and request to fd map
+        {
+            std::lock_guard<std::mutex> lk(fd_map_mtx);
+            Conn * conn = fd_to_conn[client_fd];
+            conn->server_fd = server_fd;
+            conn->request = request;
+            conn->https = true;
+            fd_to_conn[server_fd] = conn;
+        }
+        logger.debug("Add new server fd:" + to_string(server_fd));
+        register_to_epoll(server_fd);
+
         // Send 200 OK to client
         std::string response = "HTTP/1.1 200 Connection established\r\n\r\n";
         ssize_t sent = send(client_fd, response.c_str(), response.length(), 0);
@@ -628,82 +723,6 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
         // Log the response
         logger.info(request.getId(), "Responding \"HTTP/1.1 200 Connection established\"");
         logger.info(request.getId(), "Starting CONNECT tunnel");
-
-        // handle tunnel
-        try {
-            // Set up select() for both sockets
-            fd_set read_fds;
-            int max_fd = std::max(client_fd, server_fd) + 1;
-            std::vector<char> buffer(8192);
-            size_t total_bytes_client_to_server = 0;
-            size_t total_bytes_server_to_client = 0;
-
-            // pass data between client and server
-            while (true) {
-                FD_ZERO(&read_fds);
-                FD_SET(client_fd, &read_fds);
-                FD_SET(server_fd, &read_fds);
-
-                // Set select timeout (5 seconds)
-                struct timeval timeout;
-                timeout.tv_sec = 5;
-                timeout.tv_usec = 0;
-
-                int activity = select(max_fd, &read_fds, NULL, NULL, &timeout);
-                if (activity < 0) {
-                    if (errno == EINTR) continue;
-                    logger.debug(request.getId(),"activity == "+to_string(activity)+" break loop");
-                    break;
-                }
-                if (activity == 0) break;  // timeout
-
-                if (FD_ISSET(client_fd, &read_fds)) {
-                    ssize_t bytes_read = recv(client_fd, buffer.data(), buffer.size(), 0);
-                    if (bytes_read <= 0) {
-                        logger.debug(request.getId(),"client->server break: read "+to_string(bytes_read)+" on fd: "+to_string(client_fd));
-                        int er = errno;
-                        logger.debug(request.getId(), "errno: "+to_string(er));
-                        break;
-                    }
-                    size_t bytes_send = 0;
-                    if ((bytes_send = send(server_fd, buffer.data(), bytes_read, 0)) <= 0) {
-                        logger.debug(request.getId(),"client->server break: send "+to_string(bytes_read));
-                        break;
-                    }
-
-                    total_bytes_client_to_server += bytes_read;
-                    logger.debug(request.getId(),"send server "+to_string(bytes_send)+"/"+to_string(bytes_read));
-                }
-
-                if (FD_ISSET(server_fd, &read_fds)) {
-                    ssize_t bytes_read = recv(server_fd, buffer.data(), buffer.size(), 0);
-                    if (bytes_read <= 0) {
-                        logger.debug(request.getId(),"server->client break: read "+to_string(bytes_read));
-                        break;
-                    }
-                    size_t bytes_send = 0;
-                    if ((bytes_send = send(client_fd, buffer.data(), bytes_read, 0)) <= 0) {
-                        logger.debug(request.getId(),"server->client break: send "+to_string(bytes_read));
-                        break;
-                    }
-                    total_bytes_server_to_client += bytes_read;
-                    logger.debug(request.getId(),"send client "+to_string(bytes_send)+"/"+to_string(bytes_read));
-                }
-            }
-
-            logger.info(request.getId(), "Tunnel closed");
-            logger.debug(request.getId(), "Total bytes: client->server=" + 
-                        std::to_string(total_bytes_client_to_server) + ", server->client=" + 
-                        std::to_string(total_bytes_server_to_client));
-        }
-        catch (const std::exception& e) {
-            logger.error(request.getId(), "ERROR in tunnel thread: " + std::string(e.what()));
-        }
-
-        // close(server_fd);
-        // logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
-        // close(client_fd);
-        // logger.debug(request.getId(),"handle connect1 closed client fd: "+to_string(client_fd));
         
     }
     catch (const std::exception& e) {
@@ -711,10 +730,10 @@ void Proxy::handle_connect(int client_fd, const Request& request) {
         std::string error_response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
         send(client_fd, error_response.c_str(), error_response.length(), 0);
         logger.error(request.getId(), "Responding \"HTTP/1.1 502 Bad Gateway\"");
+        // close it
+        close_fd(client_fd);
+        logger.debug(request.getId(),"closed client fd: "+to_string(client_fd));
     }
-    // close it
-    close(server_fd);
-    logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
 }
 
 void Proxy::stop() {

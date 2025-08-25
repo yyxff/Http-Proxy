@@ -4,4 +4,5 @@ struct Conn {
     int client_fd;
     int server_fd;
     Request request;
+    bool https;
 };

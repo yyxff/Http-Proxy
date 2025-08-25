@@ -53,10 +53,10 @@ private:
     void start_accepting();
     
     // Static client thread function
-    static void client_thread(Proxy* proxy, int client_fd, std::mutex & fd_map_mtx);
+    static void client_thread(Proxy* proxy, int client_fd);
     
     // Handle client request
-    void handle_client(int client_fd, std::mutex & fd_map_mtx);
+    void handle_client(int client_fd);
 
     // Static server thread function
     static void server_thread(Proxy* proxy, int server_fd);
@@ -113,6 +113,9 @@ private:
     void enable_fd(int fd);
     
     void register_to_epoll(int conn_fd);
+
+    ssize_t forward(int from_fd, int to_fd);
+
     int listen_fd;
     int port;
     Logger& logger;
