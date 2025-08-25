@@ -315,23 +315,25 @@ void Proxy::handle_server(int server_fd){
 
 
         // cache it if ok
-        if (Cache::isCacheable(response)){
-            logger.debug(request.getId(), "response cacheable");
-            // Cache & cache = Cache::getInstance();
-            Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
-            CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
-            logger.debug(request.getId(),"try to cache: "+request.getUrl()+" to cache "+to_string(CacheMaster::getInstance().selectIndex(request.getUrl())));
-            cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());
-            if (cacheEntry.needsRevalidation()){
-                logger.info(request.getId(), "cached, but requires re-validation");
-            }else{
-                logger.info(request.getId(), "cached, expires at "+cacheEntry.getExpiresTimeStr());
+        if (request.getMethod() == "GET"){
+            if (Cache::isCacheable(response)){
+                logger.debug(request.getId(), "response cacheable");
+                // Cache & cache = Cache::getInstance();
+                Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
+                CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
+                logger.debug(request.getId(),"try to cache: "+request.getUrl()+" to cache "+to_string(CacheMaster::getInstance().selectIndex(request.getUrl())));
+                cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());
+                if (cacheEntry.needsRevalidation()){
+                    logger.info(request.getId(), "cached, but requires re-validation");
+                }else{
+                    logger.info(request.getId(), "cached, expires at "+cacheEntry.getExpiresTimeStr());
+                }
+                
+            }else if (response.getResult() != 200){
+                logger.info(request.getId(), "not cacheable because response result is "+to_string(response.getResult()));
+            }else {
+                logger.info(request.getId(), "not cacheable because response cache control contains \"no-store\" or \"private\"");
             }
-            
-        }else if (response.getResult() != 200){
-            logger.info(request.getId(), "not cacheable because response result is "+to_string(response.getResult()));
-        }else {
-            logger.info(request.getId(), "not cacheable because response cache control contains \"no-store\" or \"private\"");
         }
     } catch (const std::exception& e) {
         logger.error(request.getId(), "ERROR in handle_get: " + std::string(e.what()));
@@ -431,47 +433,7 @@ void Proxy::handle_get(int client_fd, const Request& request) {
         // Send the request in chunks to handle large requests
         send_all(server_fd, request_get, request.getId());
 
-        // // receive full response from server
-        // std::string full_response = receive(server_fd, request.getId());
-
-        // Parser parser;
-        // Response response = parser.parseResponse(vector<char>(full_response.begin(),full_response.end()));
-
-        // logger.info(request.getId(), "Received \""+response.getFirstLine()+"\" from "+host);
-
-        // // if ok, send response to client
-        // if (!full_response.empty()) {
-        //     logger.debug(request.getId(), "From " + host);
-        //     send_all(client_fd, full_response, request.getId());
-        //     logger.info(request.getId(), "Responding \""+response.getFirstLine()+"\"");
-        // } else {
-        //     throw std::runtime_error("Empty response from server");
-        // }
-
-
-        // // cache it if ok
-        // if (Cache::isCacheable(response)){
-        //     logger.debug(request.getId(), "response cacheable");
-        //     // Cache & cache = Cache::getInstance();
-        //     Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
-        //     CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
-        //     logger.debug(request.getId(),"try to cache: "+request.getUrl()+" to cache "+to_string(CacheMaster::getInstance().selectIndex(request.getUrl())));
-        //     cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());
-        //     if (cacheEntry.needsRevalidation()){
-        //         logger.info(request.getId(), "cached, but requires re-validation");
-        //     }else{
-        //         logger.info(request.getId(), "cached, expires at "+cacheEntry.getExpiresTimeStr());
-        //     }
-            
-        // }else if (response.getResult() != 200){
-        //     logger.info(request.getId(), "not cacheable because response result is "+to_string(response.getResult()));
-        // }else {
-        //     logger.info(request.getId(), "not cacheable because response cache control contains \"no-store\" or \"private\"");
-        // }
-
-        // logger.info(request.getId(), "Tunnel closed");
-    }
-    catch (const std::exception& e) {
+    } catch (const std::exception& e) {
         logger.error(request.getId(), "ERROR in handle_get: " + std::string(e.what()));
         std::string error_response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
         send(client_fd, error_response.c_str(), error_response.length(), 0);
@@ -561,35 +523,31 @@ void Proxy::handle_post(int client_fd, const Request& request) {
         if (setsockopt(server_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) {
             throw std::runtime_error("Failed to set socket timeout");
         }
+
+        // Add server fd and request to fd map
+        {
+            std::lock_guard<std::mutex> lk(fd_map_mtx);
+            Conn * conn = fd_to_conn[client_fd];
+            conn->server_fd = server_fd;
+            conn->request = request;
+            fd_to_conn[server_fd] = conn;
+        }
+        logger.debug("Add new server fd:" + to_string(server_fd));
+        register_to_epoll(server_fd);
         
         // Send the request in chunks to handle large requests
         send_all(server_fd, request_post, request.getId());
         
-        // receive response from server
-        std::string full_response = receive(server_fd, request.getId());
-        Parser parser;
-        Response response = parser.parseResponse(vector<char>(full_response.begin(),full_response.end()));
-
-        // if ok, send response to client
-        if (!full_response.empty()) {
-            logger.debug(request.getId(), "From " + host);
-            send_all(client_fd, full_response, request.getId());
-            logger.info(request.getId(), "Responding \""+response.getFirstLine()+"\"");
-        } else {
-            throw std::runtime_error("Empty response from server");
-        }
-
-        // logger.info(request.getId(), "Tunnel closed");
     }
     catch (const std::exception& e) {
         logger.error(request.getId(), "ERROR in handle_post: " + std::string(e.what()));
         std::string error_response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
         send(client_fd, error_response.c_str(), error_response.length(), 0);
         logger.error(request.getId(), "Responding \"HTTP/1.1 502 Bad Gateway\"");
+        // close it
+        close_fd(client_fd);
+        logger.debug(request.getId(),"closed client fd: "+to_string(client_fd));
     }
-    // close it
-    close(server_fd);
-    logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
 }
 
 int Proxy::connect_to_server(const std::string& host, int port) {
