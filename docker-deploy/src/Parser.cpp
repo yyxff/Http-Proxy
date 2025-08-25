@@ -27,8 +27,8 @@ Request Parser::parseRequest(const std::vector<char> & data){
                     logger.debug("need more");
                     continue;
                 } else {
-                    logger.error("failed to parse data, ec:"+ec.message()+" code: "+to_string(ec.value()));
-                    break;
+                    logger.error("failed to parse request data, ec:"+ec.message()+" code: "+to_string(ec.value()));
+                    throw std::runtime_error("failed to parse request data, ec:"+ec.message()+" code: "+to_string(ec.value()));
                 }
             }
 
@@ -43,7 +43,7 @@ Request Parser::parseRequest(const std::vector<char> & data){
             }
         }
     }
-    throw std::runtime_error("failed to parse data, ec:"+ec.message()+" code: "+to_string(ec.value()));
+    throw std::runtime_error("failed to parse request data, ec:"+ec.message()+" code: "+to_string(ec.value()));
 }
 
 
@@ -74,7 +74,7 @@ Response Parser::parseResponse(const std::vector<char> & data){
                     logger.debug("need more");
                     continue;
                 } else {
-                    logger.error("failed to parse data, ec:"+ec.message()+" code: "+to_string(ec.value()));
+                    logger.error("failed to parse response data, ec:"+ec.message()+" code: "+to_string(ec.value()));
                     break;
                 }
             }
@@ -89,5 +89,5 @@ Response Parser::parseResponse(const std::vector<char> & data){
             }
         }
     }
-    throw std::runtime_error("failed to parse data, ec:"+ec.message()+" code: "+to_string(ec.value()));
+    throw std::runtime_error("failed to parse response data, ec:"+ec.message()+" code: "+to_string(ec.value()));
 }

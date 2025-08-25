@@ -148,6 +148,12 @@ void Proxy::wait_on_epoll(int epfd) {
             } else if (events[i].events & EPOLLIN) {
                 // Dispatch task to thread pool
                 threadpool.enqueue([this, fd](){Proxy::client_thread(this, fd);});
+                auto status = threadpool.get_status();
+                logger.debug("=== 线程池状态 ==="\
+                            "\n总线程数: " + to_string(status.total_threads)
+                            + "\n空闲线程: " + to_string(status.idle_threads)
+                            + "\n等待任务: " + to_string(status.pending_tasks)
+                            + "\n=================");
             }
         }
     }
@@ -739,8 +745,8 @@ std::string Proxy::receive(int server_fd, int id){
                     logger.debug(id, "need more");
                     break;
                 } else {
-                    logger.error(id, "failed to parse data, ec:"+ec.message()+" code: "+to_string(ec.value()));
-                    throw runtime_error(to_string(id)+": failed to parse data. "+ec.message());
+                    logger.error(id, "failed to parse received data from server, ec:"+ec.message()+" code: "+to_string(ec.value()));
+                    throw runtime_error(to_string(id)+": failed to parse received data from server. "+ec.message());
                 }
             }
         }
