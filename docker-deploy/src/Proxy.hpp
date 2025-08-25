@@ -15,6 +15,7 @@
 #include "CacheHandler.hpp"
 #include "CacheMaster.hpp"
 #include "ThreadPool.cpp"
+#include "Conn.hpp"
 #include <condition_variable>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
@@ -52,10 +53,16 @@ private:
     void start_accepting();
     
     // Static client thread function
-    static void client_thread(Proxy* proxy, int client_fd);
+    static void client_thread(Proxy* proxy, int client_fd, std::mutex & fd_map_mtx);
     
     // Handle client request
-    void handle_client(int client_fd);
+    void handle_client(int client_fd, std::mutex & fd_map_mtx);
+
+    // Static server thread function
+    static void server_thread(Proxy* proxy, int server_fd);
+
+    // Handle server request
+    void handle_server(int server_fd);
     
     // Handle GET request
     void handle_get(int client_fd, const Request& request);
@@ -96,7 +103,16 @@ private:
     std::string build_revalid_request(const Request& request, string & eTag);
 
     void handle_revalid(int client_fd, const Request& request, string & eTag);
+
+    void close_fd(int fd);
+
+    Conn * get_conn(int fd);
+
+    void disable_fd(int fd);
+
+    void enable_fd(int fd);
     
+    void register_to_epoll(int conn_fd);
     int listen_fd;
     int port;
     Logger& logger;
@@ -107,6 +123,11 @@ private:
     bool shutdown_requested;
 
     ThreadPool threadpool;
+    int epfd = -1;
+    // fd to its conn
+    std::unordered_map<int, Conn *> fd_to_conn;
+    // mutex to access the fd map
+    std::mutex fd_map_mtx;
 };
 
 #endif

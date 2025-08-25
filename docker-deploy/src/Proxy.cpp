@@ -41,7 +41,7 @@ Proxy::~Proxy() {
 void Proxy::run() {
     setup_server();
     // start_accepting();
-    int epfd = init_epoll(listen_fd);
+    epfd = init_epoll(listen_fd);
     wait_on_epoll(epfd);
 }
 
@@ -118,8 +118,10 @@ void Proxy::wait_on_epoll(int epfd) {
 
     while (1) {
         int n = epoll_wait(epfd, events.data(), MAX_EVENTS, -1);
+        logger.debug("Got " + to_string(n) + " events on epoll");
         for (int i = 0; i < n; ++i) {
             int fd = events[i].data.fd;
+            logger.debug("process event on fd:" + to_string(fd));
 
             if (fd == listen_fd) {
                 // Get fd of new connection
@@ -136,18 +138,39 @@ void Proxy::wait_on_epoll(int epfd) {
                 if (flags == -1) return;
                 fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
-                // Add this fd to epoll event
-                epoll_event conn_ev{};
-                conn_ev.events = EPOLLIN | EPOLLET;  // edge-trrigered
-                conn_ev.data.fd = conn_fd;
-                if (epoll_ctl(epfd, EPOLL_CTL_ADD, conn_fd, &conn_ev) < 0) {
-                    perror("epoll_ctl: conn_fd");
-                    close(conn_fd);
-                    continue;
+                
+                // Add this fd to map
+                {
+                    std::lock_guard<std::mutex> lk(fd_map_mtx);
+                    Conn* conn = new Conn{};
+                    conn->client_fd = conn_fd;
+                    conn->server_fd = -1;
+                    fd_to_conn[conn_fd] = conn;
                 }
+                logger.debug("Add new client fd:" + to_string(conn_fd));
+
+                // Register this fd to epoll event
+                register_to_epoll(conn_fd);
             } else if (events[i].events & EPOLLIN) {
-                // Dispatch task to thread pool
-                threadpool.enqueue([this, fd](){Proxy::client_thread(this, fd);});
+                // 1. Check fd 
+                // 2. disable fd from epoll
+                // 3. Dispatch task to thread pool
+                auto it = fd_to_conn.find(fd);
+                if (it == fd_to_conn.end()){
+                    logger.error("fd:" + to_string(fd) + " not found in fd map");
+                }
+                Conn * conn = fd_to_conn.find(fd)->second;
+
+                disable_fd(fd);
+
+                // If is client fd
+                if (fd == conn->client_fd){
+                    threadpool.enqueue([this, fd](){Proxy::client_thread(this, fd, fd_map_mtx);});
+                    logger.debug("Dispatch a client fd:" + to_string(fd) + " to worker thread");
+                } else { // If is server fd
+                    threadpool.enqueue([this, fd](){Proxy::server_thread(this, fd);});
+                    logger.debug("Dispatch a server fd:" + to_string(fd) + " to worker thread");
+                }
                 auto status = threadpool.get_status();
                 logger.debug("=== 线程池状态 ==="\
                             "\n总线程数: " + to_string(status.total_threads)
@@ -158,53 +181,46 @@ void Proxy::wait_on_epoll(int epfd) {
         }
     }
 }
-void Proxy::start_accepting() {
-    while(running) {
-        struct sockaddr_in client_addr;
-        socklen_t client_len = sizeof(client_addr);
-        
-        // Set accept timeout to allow checking running flag
-        struct timeval tv;
-        tv.tv_sec = 1;  // 1 second timeout
-        tv.tv_usec = 0;
-        setsockopt(listen_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
-        
-        int client_fd = accept(listen_fd, (struct sockaddr *)&client_addr, &client_len);
-        logger.debug("build a new client fd "+to_string(client_fd));
-        
-        if (!running) break;
-        
-        if (client_fd < 0) {
-            if (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR) {
-                continue;  // Timeout or interrupted, check running flag
-            }
-            logger.warning("Failed to accept connection: " + std::string(strerror(errno)));
-            continue;
-        }
 
-        {
-            std::lock_guard<std::mutex> lock(thread_mutex);
-            // threads.emplace_back(&Proxy::client_thread, this, client_fd);
-            threadpool.enqueue([this, client_fd](){Proxy::client_thread(this, client_fd);});
-            auto status = threadpool.get_status();
-            logger.debug("=== 线程池状态 ==="\
-              "\n总线程数: " + to_string(status.total_threads)
-              + "\n空闲线程: " + to_string(status.idle_threads)
-              + "\n等待任务: " + to_string(status.pending_tasks)
-              + "\n=================");
-        }
+// Register this fd to epoll event
+void Proxy::register_to_epoll(int conn_fd){
+    epoll_event conn_ev{};
+    conn_ev.events = EPOLLIN | EPOLLET;  // edge-trrigered
+    conn_ev.data.fd = conn_fd;
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, conn_fd, &conn_ev) < 0) {
+        perror("epoll_ctl: conn_fd");
+        close_fd(conn_fd);
     }
-    
-    logger.info("Accepting loop terminated");
+    logger.debug("Register fd:" + to_string(conn_fd) + " to epoll");
 }
 
-void Proxy::client_thread(Proxy* proxy, int client_fd) {
-    proxy->handle_client(client_fd);
+// disbale fd from epoll
+void Proxy::disable_fd(int fd) {
+    epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+}
+
+// enable fd on epoll
+void Proxy::enable_fd(int fd) {
+    struct epoll_event ev;
+    ev.events = EPOLLIN | EPOLLET;
+    ev.data.fd = fd;
+    epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
+}
+
+void Proxy::client_thread(Proxy* proxy, int client_fd, std::mutex & fd_map_mtx) {
+    proxy->handle_client(client_fd, fd_map_mtx);
     // logger.debug("handle client fd "+to_string(client_fd));
+    proxy->enable_fd(client_fd);
+}
+
+void Proxy::server_thread(Proxy* proxy, int server_fd) {
+    proxy->handle_server(server_fd);
+    // logger.debug("handle server fd "+to_string(server_fd));
+    proxy->enable_fd(server_fd);
 }
 
 // Main request handler - parses request and routes to appropriate handler
-void Proxy::handle_client(int client_fd) {
+void Proxy::handle_client(int client_fd, std::mutex & fd_map_mtx) {
     logger.debug("handle client fd "+to_string(client_fd));
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);
@@ -224,10 +240,12 @@ void Proxy::handle_client(int client_fd) {
     }
     
     Request request;
+    Conn * conn = get_conn(client_fd);
     // parse buffer to request
     try{
         Parser parser;
-        request = parser.parseRequest(buffer);
+        conn->request = parser.parseRequest(buffer);
+        request = conn->request;
         logger.debug(request.getId()," on client fd "+to_string(client_fd)+" parse success "+request.getMethod());
     }catch(std::runtime_error & e){
         std::string response = "HTTP/1.1 400 Bad Request\r\n"
@@ -235,8 +253,8 @@ void Proxy::handle_client(int client_fd) {
                               "400 Bad Request";
         send(client_fd, response.c_str(), response.length(), 0);
         logger.warning(request.getId(), "Responding \"HTTP/1.1 400 Bad Request\"");
-        close(client_fd);
-        logger.debug(request.getId(),"handle client1 closed client fd: "+to_string(client_fd));
+        close_fd(client_fd);
+        logger.debug(request.getId(),"closed client fd: "+to_string(client_fd));
         return;
     }
     
@@ -265,9 +283,78 @@ void Proxy::handle_client(int client_fd) {
         logger.warning(request.getId(), "Responding \"HTTP/1.1 405 Method Not Allowed\" for method \"" + 
                   request.getMethod() + "\"");
     }
-    logger.debug(request.getId(),"ready to close fd "+to_string(client_fd));
-    close(client_fd);
-    logger.debug(request.getId(),"handle client2 closed client fd: "+to_string(client_fd));
+    // logger.debug(request.getId(),"ready to close fd "+to_string(client_fd));
+    // close(client_fd);
+    // logger.debug(request.getId(),"handle client2 closed client fd: "+to_string(client_fd));
+}
+
+void Proxy::handle_server(int server_fd){
+    Conn * conn = get_conn(server_fd);
+    int client_fd = conn->client_fd;
+    const Request & request = conn->request;
+    
+    try{
+        // receive full response from server
+        std::string full_response = receive(server_fd, request.getId());
+
+        Parser parser;
+        Response response = parser.parseResponse(vector<char>(full_response.begin(),full_response.end()));
+
+        std::string host = extract_host(request.getUrl());
+        logger.debug("url:" + request.getUrl());
+        logger.info(request.getId(), "Received \""+response.getFirstLine()+"\" from "+host);
+
+        // if ok, send response to client
+        if (!full_response.empty()) {
+            logger.debug(request.getId(), "From " + host);
+            send_all(client_fd, full_response, request.getId());
+            logger.info(request.getId(), "Responding \""+response.getFirstLine()+"\"");
+        } else {
+            throw std::runtime_error("Empty response from server");
+        }
+
+
+        // cache it if ok
+        if (Cache::isCacheable(response)){
+            logger.debug(request.getId(), "response cacheable");
+            // Cache & cache = Cache::getInstance();
+            Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
+            CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
+            logger.debug(request.getId(),"try to cache: "+request.getUrl()+" to cache "+to_string(CacheMaster::getInstance().selectIndex(request.getUrl())));
+            cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());
+            if (cacheEntry.needsRevalidation()){
+                logger.info(request.getId(), "cached, but requires re-validation");
+            }else{
+                logger.info(request.getId(), "cached, expires at "+cacheEntry.getExpiresTimeStr());
+            }
+            
+        }else if (response.getResult() != 200){
+            logger.info(request.getId(), "not cacheable because response result is "+to_string(response.getResult()));
+        }else {
+            logger.info(request.getId(), "not cacheable because response cache control contains \"no-store\" or \"private\"");
+        }
+    } catch (const std::exception& e) {
+        logger.error(request.getId(), "ERROR in handle_get: " + std::string(e.what()));
+        std::string error_response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
+        send(client_fd, error_response.c_str(), error_response.length(), 0);
+        logger.error(request.getId(), "Responding \"HTTP/1.1 502 Bad Gateway\"");
+    }
+    // close it
+    close_fd(server_fd);
+    logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
+}
+
+// close fd
+void Proxy::close_fd(int fd){
+    std::lock_guard<std::mutex> lk(fd_map_mtx);
+    close(fd);
+    fd_to_conn.erase(fd);
+    // logger.debug(request.getId(),"closed fd: "+to_string(fd));
+}
+
+Conn * Proxy::get_conn(int fd){
+    std::lock_guard<std::mutex> lk(fd_map_mtx);
+    return fd_to_conn[fd];
 }
 
 // from URL
@@ -310,7 +397,7 @@ std::string Proxy::build_get_request(const Request& request) {
     return req;
 }
 
-// TODO: GET need to cache
+// GET need to cache
 void Proxy::handle_get(int client_fd, const Request& request) {
     std::string host_with_port = extract_host(request.getUrl());
     auto [host, server_port] = parse_host_and_port(host_with_port);
@@ -330,46 +417,57 @@ void Proxy::handle_get(int client_fd, const Request& request) {
             throw std::runtime_error("Failed to set socket timeout");
         }
 
+        // Add server fd and request to fd map
+        {
+            std::lock_guard<std::mutex> lk(fd_map_mtx);
+            Conn * conn = fd_to_conn[client_fd];
+            conn->server_fd = server_fd;
+            conn->request = request;
+            fd_to_conn[server_fd] = conn;
+        }
+        logger.debug("Add new server fd:" + to_string(server_fd));
+        register_to_epoll(server_fd);
+
         // Send the request in chunks to handle large requests
         send_all(server_fd, request_get, request.getId());
 
-        // receive full response from server
-        std::string full_response = receive(server_fd, request.getId());
+        // // receive full response from server
+        // std::string full_response = receive(server_fd, request.getId());
 
-        Parser parser;
-        Response response = parser.parseResponse(vector<char>(full_response.begin(),full_response.end()));
+        // Parser parser;
+        // Response response = parser.parseResponse(vector<char>(full_response.begin(),full_response.end()));
 
-        logger.info(request.getId(), "Received \""+response.getFirstLine()+"\" from "+host);
+        // logger.info(request.getId(), "Received \""+response.getFirstLine()+"\" from "+host);
 
-        // if ok, send response to client
-        if (!full_response.empty()) {
-            logger.debug(request.getId(), "From " + host);
-            send_all(client_fd, full_response, request.getId());
-            logger.info(request.getId(), "Responding \""+response.getFirstLine()+"\"");
-        } else {
-            throw std::runtime_error("Empty response from server");
-        }
+        // // if ok, send response to client
+        // if (!full_response.empty()) {
+        //     logger.debug(request.getId(), "From " + host);
+        //     send_all(client_fd, full_response, request.getId());
+        //     logger.info(request.getId(), "Responding \""+response.getFirstLine()+"\"");
+        // } else {
+        //     throw std::runtime_error("Empty response from server");
+        // }
 
 
-        // cache it if ok
-        if (Cache::isCacheable(response)){
-            logger.debug(request.getId(), "response cacheable");
-            // Cache & cache = Cache::getInstance();
-            Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
-            CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
-            logger.debug(request.getId(),"try to cache: "+request.getUrl()+" to cache "+to_string(CacheMaster::getInstance().selectIndex(request.getUrl())));
-            cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());
-            if (cacheEntry.needsRevalidation()){
-                logger.info(request.getId(), "cached, but requires re-validation");
-            }else{
-                logger.info(request.getId(), "cached, expires at "+cacheEntry.getExpiresTimeStr());
-            }
+        // // cache it if ok
+        // if (Cache::isCacheable(response)){
+        //     logger.debug(request.getId(), "response cacheable");
+        //     // Cache & cache = Cache::getInstance();
+        //     Cache & cache = CacheMaster::getInstance().selectCache(request.getUrl());
+        //     CacheEntry cacheEntry("200", response.getHeadersStr(), response.getBody());
+        //     logger.debug(request.getId(),"try to cache: "+request.getUrl()+" to cache "+to_string(CacheMaster::getInstance().selectIndex(request.getUrl())));
+        //     cache.addToCache(request.getUrl(), "200", response.getHeadersStr(), response.getBody());
+        //     if (cacheEntry.needsRevalidation()){
+        //         logger.info(request.getId(), "cached, but requires re-validation");
+        //     }else{
+        //         logger.info(request.getId(), "cached, expires at "+cacheEntry.getExpiresTimeStr());
+        //     }
             
-        }else if (response.getResult() != 200){
-            logger.info(request.getId(), "not cacheable because response result is "+to_string(response.getResult()));
-        }else {
-            logger.info(request.getId(), "not cacheable because response cache control contains \"no-store\" or \"private\"");
-        }
+        // }else if (response.getResult() != 200){
+        //     logger.info(request.getId(), "not cacheable because response result is "+to_string(response.getResult()));
+        // }else {
+        //     logger.info(request.getId(), "not cacheable because response cache control contains \"no-store\" or \"private\"");
+        // }
 
         // logger.info(request.getId(), "Tunnel closed");
     }
@@ -378,10 +476,10 @@ void Proxy::handle_get(int client_fd, const Request& request) {
         std::string error_response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
         send(client_fd, error_response.c_str(), error_response.length(), 0);
         logger.error(request.getId(), "Responding \"HTTP/1.1 502 Bad Gateway\"");
+        // close it
+        close_fd(client_fd);
+        logger.debug(request.getId(),"closed client fd: "+to_string(client_fd));
     }
-    // close it
-    close(server_fd);
-    logger.debug(request.getId(),"closed server fd: "+to_string(server_fd));
 }
 
 std::string Proxy::build_post_request(const Request& request) {
@@ -765,28 +863,28 @@ std::string Proxy::receive(int server_fd, int id){
 
 
 // send full data to fd
-void Proxy::send_all(int client_fd, std::string full_response, int id){
-    size_t pos = full_response.find("\r\n");
+void Proxy::send_all(int target_fd, std::string full_message, int id){
+    size_t pos = full_message.find("\r\n");
     if (pos != std::string::npos) {
-        std::string response_line = full_response.substr(0, pos);
+        std::string response_line = full_message.substr(0, pos);
         
-        logger.debug(id, "Full response length: " + 
-                    std::to_string(full_response.length()) + " bytes");
+        logger.debug(id, "Full message length to send: " + 
+                    std::to_string(full_message.length()) + " bytes");
         
-        // Send response to client in chunks
+        // Send response to target in chunks
         size_t total_sent = 0;
-        while (total_sent < full_response.length()) {
-            ssize_t sent = send(client_fd, full_response.c_str() + total_sent,
-                                full_response.length() - total_sent, 0);
+        while (total_sent < full_message.length()) {
+            ssize_t sent = send(target_fd, full_message.c_str() + total_sent,
+                                full_message.length() - total_sent, 0);
             if (sent < 0) {
-                throw std::runtime_error("Failed to send response to client: " + 
+                throw std::runtime_error("Failed to send message to target: " + 
                                         std::string(strerror(errno)));
             }
             total_sent += sent;
         }
-        logger.debug(id, "Successfully sent "+to_string(total_sent)+" bytes to client");
+        logger.debug(id, "Successfully sent "+to_string(total_sent)+" bytes to target");
     } else {
-        throw std::runtime_error("Invalid response format");
+        throw std::runtime_error("Invalid message format");
     }
 }
 
