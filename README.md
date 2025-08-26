@@ -5,8 +5,9 @@ This project implements a high-performance, multi-threaded HTTP caching proxy se
 
 ## Features
 - **HTTP Method Support**: Handles GET, POST, and CONNECT methods
+- **Reactor**: Reactor modle with epoll
 - **Multi-threading**: Supports concurrent connections with thread-per-connection model
-- **ThreadPool**: use a thread pool, RPS: 1000, response time(p50): 90ms
+- **Dynamic ThreadPool**: dispatch fd to a dynamic thread pool, RPS: 1000, response time(p50): 90ms
 - **Caching Mechanism**: Implements HTTP caching with validation using ETags and Expires, etc.
 - **Cache Segmentation**: we segment caches into 8 pieces, every segment has their own mutex lock. So we can use different caches at same time. It is at most 8 times more efficient.
 - **Chunked Transfer Encoding**: Properly handles chunked responses
