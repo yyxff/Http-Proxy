@@ -20,22 +20,25 @@ services:
               cd /app/build && 
               cmake ../src && 
               make && ./proxy || sleep infinity"
+    cpuset: "0,1,2"
 
 
 
   server:
     build: ./tests/flaskServer
+    container_name: proxy-test-server
     ports:
-      - "5000:5000"
+      - "5001:5001"
     networks:
       - my_network
 
 
-  swarm:
+  locust-master:
     image: locustio/locust:latest
+    container_name: locust-master
     volumes:
       - ./tests/locust/:/locust/
-    command: -f /locust/locust.py --host=http://server:5000/swarm --users=100 --spawn-rate=10
+    command: -f /locust/locust.py --host=http://server:5001/swarm --master
     ports:
       - "8089:8089"
     networks:
@@ -43,6 +46,18 @@ services:
     depends_on:
       - proxy
       - server
+
+  locust-worker:
+    image: locustio/locust:latest
+    volumes:
+      - ./tests/locust/:/locust/
+    command: -f /locust/locust.py --host=http://server:5001/swarm --worker --master-host=locust-master
+    depends_on:
+      - locust-master
+    networks:
+      - my_network
+    deploy:
+      replicas: 4   
 
   tester:
     build: ./tests
