@@ -5,7 +5,7 @@ This project implements a high-performance, multi-threaded HTTP caching proxy se
 
 ## Features
 - **HTTP Method Support**: Handles GET, POST, and CONNECT methods
-- **Reactor**: Reactor modle with epoll
+- **Reactor Model**: Reactor modle with epoll
 - **Multi-threading**: Supports concurrent connections with thread-per-connection model
 - **Dynamic ThreadPool**: dispatch fd to a dynamic thread pool, RPS: 1000, response time(p50): 90ms
 - **Caching Mechanism**: Implements HTTP caching with validation using ETags and Expires, etc.
@@ -27,8 +27,9 @@ This project implements a high-performance, multi-threaded HTTP caching proxy se
 ### Deployment
 ```bash
 # Clone the repository
-git clone https://gitlab.oit.duke.edu/yy465/erss-hwk2-yy465-jh730.git
-cd erss-hwk2-yy465-jh730
+git clone git@github.com:yyxff/Http-Proxy.git
+cd Http-Proxy
+```
 
 ### Docker Deployment
 ```bash
